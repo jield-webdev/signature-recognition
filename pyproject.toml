@@ -1,0 +1,10 @@
+[project]
+name = "python-fastapi-uv-example"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.138.0",
+    "requests>=2.34.2",
+]
