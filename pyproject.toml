@@ -1,10 +1,11 @@
 [project]
-name = "python-fastapi-uv-example"
+name = "signature-recognition"
 version = "0.1.0"
-description = "Add your description here"
+description = "A program to recognise signatures from photos"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi[standard]>=0.138.0",
+    "opencv-python>=4.13.0.92",
     "requests>=2.34.2",
 ]
