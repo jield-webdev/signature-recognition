@@ -20,9 +20,7 @@ Fields:
 
 Successful response:
 
-- Status: `200 OK`
-- Content type: `application/pdf`
-- Body: PDF bytes with the new ArUco impressions.
+- PDF bytes with the new ArUco impressions.
 
 Example:
 
@@ -52,11 +50,7 @@ Coordinates are expressed in the same coordinate system used by the original PDF
 
 Successful response:
 
-- Status: `200 OK`
-- Content type: `application/json`
-- Body:
-
-```json
+- ```json
 {
   "exists": true
 }
