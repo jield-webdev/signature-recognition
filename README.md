@@ -25,7 +25,7 @@ Successful response:
 Example:
 
 ```bash
-curl -X POST http://localhost:8000/documents/aruco-signatures \
+curl -X POST http://localhost:8000/aruco-signature \
   -F "file=@contract.pdf;type=application/pdf" \
   --output contract-with-aruco.pdf
 ```
@@ -59,7 +59,7 @@ Successful response:
 Example:
 
 ```bash
-curl -X POST http://localhost:8000/signatures/verify \
+curl -X POST http://localhost:8000/validate-image \
   -F "file=@signed-page.png;type=image/png" \
   -F "x=120" \
   -F "y=640" \
