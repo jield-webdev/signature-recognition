@@ -2,7 +2,13 @@ from fastapi import UploadFile, HTTPException, status
 from fastapi.responses import Response
 
 from aruco.mark_pdf import mark_pdf
-from file.errors import InvalidPdfError, EmptyFileError, UnsupportedContentTypeError
+from file.errors import (
+    EmptyFileError,
+    EmptyPdfError,
+    EncryptedPdfError,
+    InvalidPdfError,
+    UnsupportedContentTypeError,
+)
 from file.read_pdf import read_pdf
 
 
@@ -24,7 +30,24 @@ async def aruco_signature_handler(file: UploadFile):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(error),
         ) from error
+    except EncryptedPdfError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+    except EmptyPdfError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
 
-    marked_pdf = await mark_pdf(pdf)
+    try:
+        marked_pdf = await mark_pdf(pdf)
+        content = marked_pdf.convert_to_pdf()
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process PDF.",
+        ) from error
 
-    return Response(content=marked_pdf.convert_to_pdf(), media_type="application/pdf")
+    return Response(content=content, media_type="application/pdf")

@@ -11,3 +11,10 @@ class InvalidImageError(ValueError):
 
 class InvalidPdfError(ValueError):
     pass
+
+class EmptyPdfError(ValueError):
+    pass
+
+
+class EncryptedPdfError(ValueError):
+    pass
