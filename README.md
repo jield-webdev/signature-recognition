@@ -6,7 +6,7 @@ FastAPI service for preparing PDF documents with ArUco signature impressions and
 
 The project exposes two REST endpoints.
 
-### `POST /documents/aruco-signatures`
+### `POST /aruco-signature`
 
 Accepts a PDF document and returns the same PDF with ArUco signature impressions applied.
 
@@ -30,7 +30,7 @@ curl -X POST http://localhost:8000/documents/aruco-signatures \
   --output contract-with-aruco.pdf
 ```
 
-### `POST /signatures/verify`
+### `POST /validate-image`
 
 Accepts an image and the position in the original PDF where a signature should exist. Returns whether a signature is present at that position.
 

@@ -4,17 +4,7 @@ from cv2.typing import MatLike
 
 from fastapi import UploadFile
 
-
-class EmptyFileError(ValueError):
-    pass
-
-
-class UnsupportedContentTypeError(ValueError):
-    pass
-
-
-class InvalidImageError(ValueError):
-    pass
+from file.errors import EmptyFileError, InvalidImageError, UnsupportedContentTypeError
 
 
 async def read_image(file: UploadFile) -> MatLike:

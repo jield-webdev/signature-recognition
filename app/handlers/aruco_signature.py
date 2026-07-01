@@ -1,11 +1,15 @@
-from fastapi import HTTPException, UploadFile, status
-from file.errors import EmptyFileError, InvalidImageError, UnsupportedContentTypeError
-from file.read_image import read_image
+import cv2
+import fitz
+
+from fastapi import UploadFile, HTTPException, status
+
+from file.errors import InvalidPdfError, EmptyFileError, UnsupportedContentTypeError
+from file.read_pdf import read_pdf
 
 
-async def validate_image_handler(file: UploadFile):
+async def aruco_signature_handler(file: UploadFile):
     try:
-        await read_image(file)
+        await read_pdf(file)
     except EmptyFileError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -16,10 +20,10 @@ async def validate_image_handler(file: UploadFile):
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=str(error),
         ) from error
-    except InvalidImageError as error:
+    except InvalidPdfError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(error),
         ) from error
 
-    return {"mime_type": file.content_type}
+    return "" 
