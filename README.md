@@ -6,7 +6,7 @@ FastAPI service for preparing PDF documents with ArUco-delimited signature boxes
 
 ### Marker scheme
 
-- **Dictionary:** a custom ArUco dictionary (5x5 bits, 5000 markers) generated once with `cv2.aruco.extendDictionary(5000, 5)` and committed to the repo as a YAML file (`app/aruco/dictionary.yaml`). Both the marking and the detection side load this same file — it is the single source of truth. The dictionary is never regenerated at runtime.
+- **Dictionary:** a custom ArUco dictionary (5x5 bits, 5000 markers) generated once by `app/aruco/generate_dictionary.py` and committed to the repo as `app/aruco/dictionary.yaml` (see [Generating the dictionary](#generating-the-dictionary)). Both the marking and the detection side load this same file — it is the single source of truth. The dictionary is never regenerated at runtime.
 - **Box encoding:** each signature box is identified by a numeric `box_id` (0–1249) and delimited by 4 markers, one per corner. The ArUco marker ID encodes both the box and the corner:
 
   ```text
@@ -127,6 +127,27 @@ Install dependencies:
 ```bash
 uv sync
 ```
+
+### Generating the dictionary
+
+The custom ArUco dictionary is a **one-time setup step**:
+
+```bash
+uv run python app/aruco/generate_dictionary.py
+```
+
+This writes `app/aruco/dictionary.yaml` (5000 markers, 5x5 bits). Notes:
+
+- It is slow — `extendDictionary` searches for well-separated marker patterns and can run at full CPU for several minutes.
+- Run it **once** and commit `dictionary.yaml`. Never regenerate it: a different dictionary would stop decoding every document already printed with the old one. Nothing at runtime should call `extendDictionary`.
+- Consumers load the committed file instead of generating anything:
+
+  ```python
+  fs = cv2.FileStorage(str(DICT_PATH), cv2.FILE_STORAGE_READ)
+  aruco_dict = cv2.aruco.Dictionary()
+  aruco_dict.readDictionary(fs.root())
+  fs.release()
+  ```
 
 Run the API locally:
 
