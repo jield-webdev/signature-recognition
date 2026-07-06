@@ -1,5 +1,6 @@
 import cv2
 from fastapi import HTTPException, UploadFile, status
+from aruco.detect_markers import detect_markers
 from file.errors import EmptyFileError, InvalidImageError, UnsupportedContentTypeError
 from file.read_image import parse_image
 from fastapi.responses import Response
@@ -40,18 +41,6 @@ async def validate_image_handler(file: UploadFile):
             detail=f"Unsupported content type '{content_type}'.",
         )
 
-    try:
-        success, encoded_image = cv2.imencode(IMAGE_EXTENSIONS[content_type], image)
-    except cv2.error as error:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to encode image.",
-        ) from error
+    aruco_id = await detect_markers(image)
 
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to encode image.",
-        )
-
-    return Response(content=encoded_image.tobytes(), media_type=content_type)
+    return aruco_id 
