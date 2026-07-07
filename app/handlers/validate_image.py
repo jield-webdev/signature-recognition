@@ -1,18 +1,8 @@
-import cv2
 from fastapi import HTTPException, UploadFile, status
-from aruco.detect_markers import detect_markers
+
+from aruco.detect_boxes import detect_boxes
 from file.errors import EmptyFileError, InvalidImageError, UnsupportedContentTypeError
 from file.read_image import parse_image
-from fastapi.responses import Response
-
-
-IMAGE_EXTENSIONS = {
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/bmp": ".bmp",
-    "image/tiff": ".tiff",
-    "image/webp": ".webp",
-}
 
 
 async def validate_image_handler(file: UploadFile):
@@ -34,13 +24,6 @@ async def validate_image_handler(file: UploadFile):
             detail=str(error),
         ) from error
 
-    content_type = file.content_type
-    if content_type not in IMAGE_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Unsupported content type '{content_type}'.",
-        )
+    boxes = await detect_boxes(image)
 
-    aruco_id = await detect_markers(image)
-
-    return aruco_id 
+    return {"boxes": boxes}

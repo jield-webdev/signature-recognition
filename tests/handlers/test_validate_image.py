@@ -1,21 +1,41 @@
 import cv2
+import fitz
 import numpy as np
 
+from aruco.mark_pdf import mark_pdf
 
-def test_returns_validated_image(client):
-    image = np.full((8, 8, 3), 255, dtype=np.uint8)
+
+async def test_returns_detected_boxes(client, pdf_bytes):
+    doc = fitz.open(stream=pdf_bytes(pages=1), filetype="pdf")
+    await mark_pdf(doc, box_id=123)
+    pix = doc[0].get_pixmap(matrix=fitz.Matrix(6, 6), colorspace=fitz.csGRAY)
+    image = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width)
     success, encoded_image = cv2.imencode(".png", image)
 
     assert success
 
     response = client.post(
         "/validate-image",
-        files={"file": ("signature.png", encoded_image.tobytes(), "image/png")},
+        files={"file": ("photo.png", encoded_image.tobytes(), "image/png")},
     )
 
     assert response.status_code == 200
-    assert response.headers["content-type"] == "image/png"
-    assert response.content.startswith(b"\x89PNG")
+    assert response.json() == {"boxes": [{"box_id": 123}]}
+
+
+def test_returns_no_boxes_for_unmarked_image(client):
+    image = np.full((64, 64, 3), 255, dtype=np.uint8)
+    success, encoded_image = cv2.imencode(".png", image)
+
+    assert success
+
+    response = client.post(
+        "/validate-image",
+        files={"file": ("photo.png", encoded_image.tobytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"boxes": []}
 
 
 def test_rejects_empty_file(client):

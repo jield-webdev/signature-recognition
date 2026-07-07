@@ -9,6 +9,7 @@ dependencies = [
     "opencv-python>=4.13.0.92",
     "pymupdf>=1.28.0",
     "requests>=2.34.2",
+    "zxing-cpp>=3.0.0",
 ]
 
 [dependency-groups]

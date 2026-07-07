@@ -1,7 +1,7 @@
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI, Form, UploadFile
 
 from handlers.validate_image import validate_image_handler
-from handlers.aruco_signature import aruco_signature_handler
+from handlers.mark_pdf import mark_pdf_handler
 
 app = FastAPI()
 
@@ -11,6 +11,6 @@ async def validate_image(file: UploadFile):
     return await validate_image_handler(file)
 
 
-@app.post("/aruco-signature")
-async def aruco_signature(file: UploadFile):
-    return await aruco_signature_handler(file)
+@app.post("/mark-pdf")
+async def mark_pdf(file: UploadFile, box_id: int = Form(...)):
+    return await mark_pdf_handler(file, box_id)

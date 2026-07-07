@@ -2,6 +2,7 @@ from fastapi import UploadFile, HTTPException, status
 from fastapi.responses import Response
 
 from aruco.mark_pdf import mark_pdf
+from aruco.utils import MAX_BOX_ID, is_valid_box_id
 from file.errors import (
     EmptyFileError,
     EmptyPdfError,
@@ -12,7 +13,13 @@ from file.errors import (
 from file.read_pdf import read_pdf
 
 
-async def aruco_signature_handler(file: UploadFile):
+async def mark_pdf_handler(file: UploadFile, box_id: int):
+    if not is_valid_box_id(box_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Box id {box_id} is not valid. Must be between 1 and {MAX_BOX_ID}.",
+        )
+
     try:
         pdf = await read_pdf(file)
     except EmptyFileError as error:
@@ -42,7 +49,7 @@ async def aruco_signature_handler(file: UploadFile):
         ) from error
 
     try:
-        marked_pdf = await mark_pdf(pdf)
+        marked_pdf = await mark_pdf(pdf, box_id)
         content = marked_pdf.convert_to_pdf()
     except Exception as error:
         raise HTTPException(

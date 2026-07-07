@@ -1,76 +1,59 @@
 # Signature Recognition
 
-FastAPI service for preparing PDF documents with ArUco-delimited signature boxes and validating, from a photo of the printed document, which boxes are signed.
+FastAPI service for preparing PDF documents with marked signature boxes and validating, from a photo of the printed document, which boxes are signed.
 
 ## How it works
 
+Each signature box on a printed document carries two kinds of symbols, with separate jobs:
+
+- **Geometry — ArUco markers.** Two markers per box, on the box diagonal: one at the top-left, one at the bottom-right. Their detected corners (8 points) are used to build the perspective transform that rectifies the photo. Markers come from OpenCV's predefined `DICT_4X4_50` — the smallest standard dictionary, which maximizes cell size and Hamming distance between codes, i.e. detection robustness in handheld photos.
+- **Identity — a DataMatrix code.** Printed to the right of the top-left marker, it encodes the box's numeric id. Identity never travels in the ArUco ids, so the id space is not limited by any marker dictionary, and a damaged code fails loudly (no decode) instead of silently reading as a wrong id, thanks to Reed-Solomon error correction.
+
 ### Marker scheme
 
-- **Dictionary:** a custom ArUco dictionary (5x5 bits, 5000 markers) generated once by `app/aruco/generate_dictionary.py` and committed to the repo as `app/aruco/dictionary.yaml` (see [Generating the dictionary](#generating-the-dictionary)). Both the marking and the detection side load this same file — it is the single source of truth. The dictionary is never regenerated at runtime.
-- **Box encoding:** each signature box is identified by a numeric `box_id` (0–1249) and delimited by 4 markers, one per corner. The ArUco marker ID encodes both the box and the corner:
+- **Marker ids encode page slots, not identity.** Slot `n` on a page uses marker ids `(2n, 2n+1)`: the even id is always the top-left marker, the odd id the bottom-right. With 50 ids that allows up to 25 boxes per page. Currently the marking endpoint stamps a single box (slot 0, ids 0 and 1) spanning the whole page.
+- **Box ids are opaque.** Each box id maps to a string in the caller's database; this service never sees those strings. Valid ids are integers `1`–`999999` — 6 decimal digits keeps the DataMatrix at its smallest symbol sizes.
+- **Print sizes.** ArUco markers and the DataMatrix are both stamped at ~18 pt. A white gap separates the marker border from the DataMatrix quiet zone.
 
-  ```text
-  marker_id = 4 * box_id + corner        corner: 0=TL, 1=TR, 2=BR, 3=BL
-  ```
+### Detection pipeline
 
-  Because every corner has a distinct ID, detection knows exactly which corner a marker belongs to even when some markers are occluded.
-- **Box IDs are opaque.** This service never sees the strings/labels associated with boxes. The caller owns a registry that assigns each label a free `box_id` (assignment, not hashing — hashing arbitrary strings into a small ID space collides) and maps IDs back to labels when reading validation results.
-- **Print size:** markers are stamped at ~10 pt. 5x5 markers need slightly more resolution than 4x4; ~10 pt keeps them reliably decodable in handheld phone photos.
+Identity detection is implemented; ink analysis is planned.
 
-### Detection pipeline (`/validate-image`)
-
-1. **Load dictionary** from the committed YAML at startup.
-2. **Detect markers** with `cv2.aruco.ArucoDetector`. `minMarkerPerimeterRate` is lowered (~0.01) because the markers are small relative to a full-page photo.
-3. **Group into boxes** via `divmod(marker_id, 4)`. A box is complete when all 4 corner roles are present. A duplicated marker ID (false decode) or fewer than 4 markers ⇒ the box is reported with `signed: null` instead of guessing.
-4. **Rectify the region:** markers are printed axis-aligned, so each marker's *inner* corner (the one pointing into the box) is known from its role. The perspective transform built from the 4 inner corners yields a rectified ROI containing only the paper between the markers.
-5. **Ink analysis:** grayscale → adaptive threshold (local contrast, so shadows across the page don't read as ink) → 3×3 morphological opening (removes sensor speckle) → ink ratio = fraction of dark pixels. `signed = ink_ratio > threshold` (~0.004, tuned against faint pencil signatures, the worst case).
+1. **Detect markers** with `cv2.aruco.ArucoDetector`. A photo may contain several boxes; every even marker id marks the top-left corner of one.
+2. **Decode identity** per box: the top-left marker's 4 detected corners define the local perspective of the page plane, so its neighborhood is rectified with that homography and the DataMatrix is cropped at its known print offset and decoded with `zxing-cpp`. A decode failure is reported as `box_id: null` ("retake the photo"), never a guessed id.
+3. **Ink analysis** *(planned)*: rectify the full box from both diagonal markers' 8 corners, threshold the interior adaptively (excluding the marker and DataMatrix areas), and compare the ink ratio against a tuned threshold to decide `is_signed`.
 
 ## API
 
-The project exposes two REST endpoints.
+### `POST /mark-pdf`
 
-### `POST /aruco-signature`
-
-Accepts a PDF document plus the signature boxes to stamp, and returns the same PDF with 4 ArUco markers around each box.
+Accepts a PDF document plus a box id, and returns the same PDF with the box's ArUco marker pair on the first page's diagonal and a DataMatrix encoding the id next to the top-left marker.
 
 Request content type: `multipart/form-data`
-
-Fields:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `file` | PDF file | Yes | Original PDF document. |
-| `boxes` | JSON string | Yes | Array of boxes to stamp, see below. |
-
-Each element of `boxes`:
-
-| Key | Type | Required | Description |
-| --- | --- | --- | --- |
-| `box_id` | Integer (0–1249) | Yes | Box identifier assigned by the caller's registry. |
-| `x`, `y` | Number | Yes | Top-left corner of the signature area, in PDF points. |
-| `width`, `height` | Number | Yes | Size of the signature area, in PDF points. |
-| `page` | Integer | No | Page index, defaults to `0`. |
+| `box_id` | Integer (1–999999) | Yes | Box identifier assigned by the caller's registry. |
 
 Successful response:
 
-- PDF bytes with the ArUco markers applied.
+- PDF bytes with the markers and DataMatrix applied.
 
 Example:
 
 ```bash
-curl -X POST http://localhost:8000/aruco-signature \
+curl -X POST http://localhost:8000/mark-pdf \
   -F "file=@contract.pdf;type=application/pdf" \
-  -F 'boxes=[{"box_id": 12, "x": 120, "y": 640, "width": 220, "height": 90}]' \
-  --output contract-with-aruco.pdf
+  -F "box_id=12" \
+  --output contract-with-marks.pdf
 ```
 
 ### `POST /validate-image`
 
-Accepts a photo of a printed, marked document. Detects every signature box present in the image and reports whether each one is signed. No coordinates are needed — the markers themselves locate the boxes.
+Accepts a photo of a printed, marked document and returns the boxes found in it, one entry per detected top-left marker, ordered by slot. `is_signed` will be added to each entry once ink analysis lands.
 
 Request content type: `multipart/form-data`
-
-Fields:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -81,18 +64,13 @@ Successful response:
 ```json
 {
   "boxes": [
-    {"box_id": 12, "signed": true,  "markers_found": 4, "ink_ratio": 0.031},
-    {"box_id": 40, "signed": null,  "markers_found": 2, "ink_ratio": null}
+    { "box_id": 123 },
+    { "box_id": null }
   ]
 }
 ```
 
-| Key | Description |
-| --- | --- |
-| `box_id` | Box identifier; the caller maps it back to its label via its registry. |
-| `signed` | `true`/`false`, or `null` when the box could not be evaluated (incomplete or ambiguous markers). |
-| `markers_found` | Number of the box's 4 corner markers detected (a duplicate decode also makes the box ambiguous). |
-| `ink_ratio` | Fraction of ink pixels in the rectified box; useful for logging borderline cases. `null` when the box could not be evaluated. |
+A `box_id` of `null` means the box's marker was found but its DataMatrix could not be decoded (blur, glare, damage) — ask the user to retake the photo.
 
 Example:
 
@@ -105,15 +83,15 @@ curl -X POST http://localhost:8000/validate-image \
 
 | Status | Meaning |
 | --- | --- |
-| `400 Bad Request` | Invalid, empty, or unreadable input. |
+| `400 Bad Request` | Invalid, empty, or unreadable input; box id out of range. |
 | `415 Unsupported Media Type` | Uploaded file type is not supported. |
 | `422 Unprocessable Entity` | Required form fields are missing or malformed. |
 | `500 Internal Server Error` | Unexpected processing error. |
 
 ## Testing
 
-- **Unit tests:** synthetic images — markers rendered from the custom dictionary onto a white canvas (optionally warped/shaded), with drawn strokes for the "signed" cases.
-- **Real-world check:** print and photograph a fresh sample batch once `/aruco-signature` stamps the new markers.
+- **Unit tests:** the marking tests rasterize the stamped PDF page and verify the full loop — both ArUco markers detect and the DataMatrix decodes back to the original box id.
+- **Real-world check:** print and photograph a sample batch to validate marker/DataMatrix print sizes against real phone photos.
 
 ## Development
 
@@ -127,27 +105,6 @@ Install dependencies:
 ```bash
 uv sync
 ```
-
-### Generating the dictionary
-
-The custom ArUco dictionary is a **one-time setup step**:
-
-```bash
-uv run python app/aruco/generate_dictionary.py
-```
-
-This writes `app/aruco/dictionary.yaml` (5000 markers, 5x5 bits). Notes:
-
-- It is slow — `extendDictionary` searches for well-separated marker patterns and can run at full CPU for several minutes.
-- Run it **once** and commit `dictionary.yaml`. Never regenerate it: a different dictionary would stop decoding every document already printed with the old one. Nothing at runtime should call `extendDictionary`.
-- Consumers load the committed file instead of generating anything:
-
-  ```python
-  fs = cv2.FileStorage(str(DICT_PATH), cv2.FILE_STORAGE_READ)
-  aruco_dict = cv2.aruco.Dictionary()
-  aruco_dict.readDictionary(fs.root())
-  fs.release()
-  ```
 
 Run the API locally:
 
