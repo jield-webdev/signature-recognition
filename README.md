@@ -17,12 +17,12 @@ Each signature box on a printed document carries two kinds of symbols, with sepa
 
 ### Detection pipeline
 
-Identity detection is implemented; ink analysis is planned.
+The full pipeline — identity detection and ink analysis — is implemented.
 
 1. **Detect markers** with `cv2.aruco.ArucoDetector` (subpixel corner refinement, since the corners feed homographies). A photo may contain several boxes; a box is processed only when **both** of its markers are detected — incomplete pairs are ignored entirely.
 2. **Crop each box** independently: the box's own 8 marker corners define its homography, so one box's noise or a bent page never distorts another. The box's size isn't known in advance — it's recovered by rectifying the plane from the top-left marker alone and measuring where the bottom-right marker lands. The crop is returned perspective-free at 4 px per print point.
 3. **Decode identity** per box: the DataMatrix is cropped at its known print offset from the top-left marker in the rectified plane and decoded with `zxing-cpp`. A decode failure is reported as `box_id: null` ("retake the photo"), never a guessed id.
-4. **Ink analysis** *(planned)*: threshold the cropped box interior adaptively (excluding the marker and DataMatrix areas) and compare the ink ratio against a tuned threshold to decide `is_signed`.
+4. **Ink analysis** per box: the marker and DataMatrix rectangles sit at fixed positions in the rectified crop, so they are masked out (with a small safety padding, since rectification isn't pixel-perfect). The paper brightness is estimated as the median of the remaining interior; pixels darker than that background by a fixed delta count as ink, and the box is `is_signed` when the ink ratio clears a tuned threshold. Being background-relative, the check tolerates exposure and paper-tone differences between photos.
 
 ## API
 
@@ -52,7 +52,7 @@ curl -X POST http://localhost:8000/mark-pdf \
 
 ### `POST /validate-image`
 
-Accepts a photo of a printed, marked document and returns the boxes found in it, one entry per complete marker pair, ordered by slot. Each entry carries the box's rectified (perspective-removed) crop as a base64-encoded PNG. `is_signed` will be added to each entry once ink analysis lands.
+Accepts a photo of a printed, marked document and returns the boxes found in it, one entry per complete marker pair, ordered by slot. Each entry carries the box's rectified (perspective-removed) crop as a base64-encoded PNG and an `is_signed` flag from the ink analysis.
 
 Request content type: `multipart/form-data`
 
@@ -65,14 +65,15 @@ Successful response:
 ```json
 {
   "boxes": [
-    { "box_id": 123, "image": "iVBORw0KGgo..." },
-    { "box_id": null, "image": "iVBORw0KGgo..." }
+    { "box_id": 123, "image": "iVBORw0KGgo...", "is_signed": true },
+    { "box_id": null, "image": "iVBORw0KGgo...", "is_signed": false }
   ]
 }
 ```
 
 - A box appears only when both of its markers were detected; boxes with a missing marker are ignored.
 - A `box_id` of `null` means the box was found and cropped but its DataMatrix could not be decoded (blur, glare, damage) — ask the user to retake the photo.
+- `is_signed` is `true` when ink is detected in the box interior; the marker and DataMatrix areas are excluded from the measurement, so the printed symbols never count as ink.
 
 Example:
 

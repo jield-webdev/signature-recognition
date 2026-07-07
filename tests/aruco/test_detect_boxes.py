@@ -34,6 +34,7 @@ def _stamp_box(
     box_w_pt: int = 250,
     box_h_pt: int = 120,
     include_bottom_right: bool = True,
+    signed: bool = False,
 ) -> None:
     """Stamp a full box (marker pair + DataMatrix) with mark_pdf's layout ratios."""
     marker_px = MARKER_SIZE * PPP
@@ -51,6 +52,18 @@ def _stamp_box(
     dm = _datamatrix_image(box_id, DATAMATRIX_SIZE * PPP)
     dm_x = x + (MARKER_SIZE + GAP) * PPP
     canvas[y : y + dm.shape[0], dm_x : dm_x + dm.shape[1]] = dm
+
+    if signed:
+        squiggle = np.array(
+            [
+                [x + int(box_w * 0.2), y + int(box_h * 0.8)],
+                [x + int(box_w * 0.35), y + int(box_h * 0.55)],
+                [x + int(box_w * 0.5), y + int(box_h * 0.85)],
+                [x + int(box_w * 0.65), y + int(box_h * 0.55)],
+                [x + int(box_w * 0.8), y + int(box_h * 0.8)],
+            ]
+        )
+        cv2.polylines(canvas, [squiggle], isClosed=False, color=0, thickness=6)
 
 
 def _assert_crop_size(crop: np.ndarray, box_w_pt: float, box_h_pt: float) -> None:
@@ -70,7 +83,20 @@ async def test_detects_single_box_from_marked_pdf(pdf_bytes):
 
     assert len(boxes) == 1
     assert boxes[0]["box_id"] == 250000
+    assert boxes[0]["is_signed"] is False
     _assert_crop_size(boxes[0]["image"], page_w - 2 * MARGIN, page_h - 2 * MARGIN)
+
+
+async def test_reports_signed_and_unsigned_boxes():
+    canvas = np.full((2000, 2200), 255, dtype=np.uint8)
+    _stamp_box(canvas, slot=0, box_id=11, x=100, y=100, signed=True)
+    _stamp_box(canvas, slot=1, box_id=22, x=100, y=1000)
+
+    boxes = await detect_boxes(canvas)
+
+    assert [box["box_id"] for box in boxes] == [11, 22]
+    assert boxes[0]["is_signed"] is True
+    assert boxes[1]["is_signed"] is False
 
 
 async def test_detects_multiple_boxes_each_cropped_independently():

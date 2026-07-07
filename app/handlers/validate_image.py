@@ -37,7 +37,11 @@ async def validate_image_handler(file: UploadFile):
 
     return {
         "boxes": [
-            {"box_id": box["box_id"], "image": _encode_png(box["image"])}
+            {
+                "box_id": box["box_id"],
+                "image": _encode_png(box["image"]),
+                "is_signed": box["is_signed"],
+            }
             for box in boxes
         ]
     }

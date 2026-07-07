@@ -3,6 +3,7 @@ import numpy as np
 import zxingcpp
 from cv2.typing import MatLike
 
+from aruco.analyze_ink import is_signed
 from aruco.detect_markers import detect_markers
 from aruco.layout import DATAMATRIX_SIZE, GAP, MARKER_SIZE
 from aruco.rectify_box import rectify_box
@@ -83,6 +84,7 @@ async def detect_boxes(image: MatLike) -> list[dict]:
             {
                 "box_id": _decode_datamatrix(image, top_left),
                 "image": crop,
+                "is_signed": is_signed(crop),
             }
         )
     return boxes

@@ -25,7 +25,40 @@ async def test_returns_detected_boxes_with_cropped_images(client, pdf_bytes):
     boxes = response.json()["boxes"]
     assert len(boxes) == 1
     assert boxes[0]["box_id"] == 123
+    assert boxes[0]["is_signed"] is False
     assert base64.b64decode(boxes[0]["image"]).startswith(b"\x89PNG")
+
+
+async def test_reports_signed_box(client, pdf_bytes):
+    doc = fitz.open(stream=pdf_bytes(pages=1), filetype="pdf")
+    await mark_pdf(doc, box_id=123)
+    pix = doc[0].get_pixmap(matrix=fitz.Matrix(6, 6), colorspace=fitz.csGRAY)
+    image = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width).copy()
+    h, w = image.shape
+    squiggle = np.array(
+        [
+            [int(w * 0.2), int(h * 0.6)],
+            [int(w * 0.35), int(h * 0.4)],
+            [int(w * 0.5), int(h * 0.65)],
+            [int(w * 0.65), int(h * 0.4)],
+            [int(w * 0.8), int(h * 0.6)],
+        ]
+    )
+    cv2.polylines(image, [squiggle], isClosed=False, color=0, thickness=6)
+    success, encoded_image = cv2.imencode(".png", image)
+
+    assert success
+
+    response = client.post(
+        "/validate-image",
+        files={"file": ("photo.png", encoded_image.tobytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    boxes = response.json()["boxes"]
+    assert len(boxes) == 1
+    assert boxes[0]["box_id"] == 123
+    assert boxes[0]["is_signed"] is True
 
 
 def test_returns_no_boxes_for_unmarked_image(client):
