@@ -9,8 +9,11 @@ from file.errors import EmptyFileError, InvalidImageError, UnsupportedContentTyp
 from file.read_image import parse_image
 
 
-def _encode_png(crop: np.ndarray) -> str:
-    ok, buf = cv2.imencode(".png", crop)
+WEBP_QUALITY = 80
+
+
+def _encode_webp(crop: np.ndarray) -> str:
+    ok, buf = cv2.imencode(".webp", crop, [cv2.IMWRITE_WEBP_QUALITY, WEBP_QUALITY])
     return base64.b64encode(buf.tobytes()).decode()
 
 
@@ -39,7 +42,7 @@ async def validate_image_handler(file: UploadFile):
         "boxes": [
             {
                 "box_id": box["box_id"],
-                "image": _encode_png(box["image"]),
+                "image": _encode_webp(box["image"]),
                 "is_signed": box["is_signed"],
             }
             for box in boxes

@@ -26,7 +26,9 @@ async def test_returns_detected_boxes_with_cropped_images(client, pdf_bytes):
     assert len(boxes) == 1
     assert boxes[0]["box_id"] == 123
     assert boxes[0]["is_signed"] is False
-    assert base64.b64decode(boxes[0]["image"]).startswith(b"\x89PNG")
+    decoded = base64.b64decode(boxes[0]["image"])
+    assert decoded.startswith(b"RIFF")
+    assert decoded[8:12] == b"WEBP"
 
 
 async def test_reports_signed_box(client, pdf_bytes):
