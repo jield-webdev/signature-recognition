@@ -1,3 +1,5 @@
+import base64
+
 import cv2
 import fitz
 import numpy as np
@@ -5,7 +7,7 @@ import numpy as np
 from aruco.mark_pdf import mark_pdf
 
 
-async def test_returns_detected_boxes(client, pdf_bytes):
+async def test_returns_detected_boxes_with_cropped_images(client, pdf_bytes):
     doc = fitz.open(stream=pdf_bytes(pages=1), filetype="pdf")
     await mark_pdf(doc, box_id=123)
     pix = doc[0].get_pixmap(matrix=fitz.Matrix(6, 6), colorspace=fitz.csGRAY)
@@ -20,7 +22,10 @@ async def test_returns_detected_boxes(client, pdf_bytes):
     )
 
     assert response.status_code == 200
-    assert response.json() == {"boxes": [{"box_id": 123}]}
+    boxes = response.json()["boxes"]
+    assert len(boxes) == 1
+    assert boxes[0]["box_id"] == 123
+    assert base64.b64decode(boxes[0]["image"]).startswith(b"\x89PNG")
 
 
 def test_returns_no_boxes_for_unmarked_image(client):

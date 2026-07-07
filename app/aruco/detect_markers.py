@@ -12,6 +12,9 @@ async def detect_markers(image: MatLike) -> list[tuple[int, np.ndarray]]:
     OpenCV. Returns an empty list when no marker is found.
     """
     parameters = cv2.aruco.DetectorParameters()
+    # Corners feed homographies; subpixel refinement keeps the small per-corner
+    # error from being amplified over the distance between a box's two markers.
+    parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
     detector = cv2.aruco.ArucoDetector(ARUCO_DICT, parameters)
 
     corners, ids, rejected = detector.detectMarkers(image)

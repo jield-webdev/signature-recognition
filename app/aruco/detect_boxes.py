@@ -5,6 +5,7 @@ from cv2.typing import MatLike
 
 from aruco.detect_markers import detect_markers
 from aruco.layout import DATAMATRIX_SIZE, GAP, MARKER_SIZE
+from aruco.rectify_box import rectify_box
 from aruco.utils import is_valid_box_id
 
 # Side of the canonical (rectified) marker square, in pixels. The stamped
@@ -57,17 +58,31 @@ def _decode_datamatrix(image: MatLike, marker_corners: np.ndarray) -> int | None
 
 
 async def detect_boxes(image: MatLike) -> list[dict]:
-    """Find every signature box in a photo and decode its DataMatrix id.
+    """Find every signature box in a photo, crop it, and decode its id.
 
-    Each even marker id is the top-left corner of a box; its DataMatrix is
-    decoded from a locally rectified crop. A box whose DataMatrix cannot be
-    decoded is reported with ``box_id: None`` so the caller can request a
-    retake instead of silently dropping it.
+    Each box is delimited by its own marker pair (even id = top-left, odd id
+    = bottom-right) and rectified independently, so boxes never distort each
+    other. A box is ignored entirely unless both of its markers are detected.
+    A box whose DataMatrix cannot be decoded is reported with ``box_id: None``
+    so the caller can request a retake instead of silently dropping it.
     """
-    markers = await detect_markers(image)
+    corners_by_id = dict(await detect_markers(image))
 
-    return [
-        {"box_id": _decode_datamatrix(image, corners)}
-        for marker_id, corners in sorted(markers, key=lambda marker: marker[0])
-        if marker_id % 2 == 0
-    ]
+    boxes = []
+    for top_left_id in sorted(marker_id for marker_id in corners_by_id if marker_id % 2 == 0):
+        top_left = corners_by_id[top_left_id]
+        bottom_right = corners_by_id.get(top_left_id + 1)
+        if bottom_right is None:
+            continue  # incomplete pair -> ignore the whole box
+
+        crop = rectify_box(image, top_left, bottom_right)
+        if crop is None:
+            continue  # both markers found but not in a valid diagonal arrangement
+
+        boxes.append(
+            {
+                "box_id": _decode_datamatrix(image, top_left),
+                "image": crop,
+            }
+        )
+    return boxes

@@ -1,8 +1,17 @@
+import base64
+
+import cv2
+import numpy as np
 from fastapi import HTTPException, UploadFile, status
 
 from aruco.detect_boxes import detect_boxes
 from file.errors import EmptyFileError, InvalidImageError, UnsupportedContentTypeError
 from file.read_image import parse_image
+
+
+def _encode_png(crop: np.ndarray) -> str:
+    ok, buf = cv2.imencode(".png", crop)
+    return base64.b64encode(buf.tobytes()).decode()
 
 
 async def validate_image_handler(file: UploadFile):
@@ -26,4 +35,9 @@ async def validate_image_handler(file: UploadFile):
 
     boxes = await detect_boxes(image)
 
-    return {"boxes": boxes}
+    return {
+        "boxes": [
+            {"box_id": box["box_id"], "image": _encode_png(box["image"])}
+            for box in boxes
+        ]
+    }
