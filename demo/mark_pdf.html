@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mark PDF Demo</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --border: #d9dde3;
+    --text: #1d2430;
+    --muted: #667085;
+    --accent: #2563eb;
+    --accent-bg: rgba(37, 99, 235, .12);
+    --bad: #b42318;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 2rem 1rem;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  nav { margin-bottom: 1rem; font-size: .9rem; }
+  nav a { color: var(--accent); }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .3rem; }
+  input[type="text"] {
+    width: 100%;
+    padding: .5rem .65rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font: inherit;
+    margin-bottom: 1rem;
+  }
+  input[type="file"] { display: block; margin-bottom: 1rem; }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    padding: .55rem 1.2rem;
+    font: inherit;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  button.secondary {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--border);
+  }
+  /* Viewer */
+  #viewer-card .toolbar {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    margin-bottom: .75rem;
+  }
+  #viewer-card .toolbar .page-indicator { font-size: .9rem; color: var(--muted); }
+  #viewer-card .toolbar button { padding: .3rem .8rem; }
+  #page-wrap {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    line-height: 0;
+  }
+  #page-canvas { max-width: 100%; }
+  #overlay {
+    position: absolute;
+    inset: 0;
+    cursor: crosshair;
+    touch-action: none;
+  }
+  .sel-box {
+    position: absolute;
+    border: 2px solid var(--accent);
+    background: var(--accent-bg);
+    pointer-events: none;
+    line-height: 1;
+  }
+  .sel-box .tag {
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: var(--accent);
+    color: #fff;
+    font-size: .7rem;
+    padding: .1rem .35rem;
+    border-radius: 0 0 4px 0;
+  }
+  .sel-box .delete {
+    position: absolute;
+    top: 0;
+    right: 0;
+    pointer-events: auto;
+    background: var(--bad);
+    color: #fff;
+    border: 0;
+    border-radius: 0 0 0 4px;
+    font-size: .7rem;
+    padding: .1rem .35rem;
+    cursor: pointer;
+  }
+  /* Placement rows */
+  .placements-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: .75rem;
+  }
+  .placements-header h2 { font-size: 1rem; margin: 0; }
+  .placement {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr) auto;
+    gap: .5rem;
+    align-items: end;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .75rem;
+    margin-bottom: .75rem;
+  }
+  .placement label { margin-bottom: .2rem; font-size: .75rem; }
+  .placement input {
+    width: 100%;
+    padding: .4rem .5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font: inherit;
+  }
+  .placement .remove {
+    background: transparent;
+    color: var(--bad);
+    border: 1px solid var(--border);
+    padding: .4rem .7rem;
+  }
+  .hint { font-size: .8rem; color: var(--muted); margin: 0 0 1rem; }
+  #status { margin: 0 0 .75rem; font-weight: 600; }
+  #status.error { color: var(--bad); font-weight: 400; white-space: pre-wrap; }
+  #download { display: inline-block; margin-bottom: 1rem; }
+  #result-preview {
+    width: 100%;
+    height: 480px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Signature recognition — /mark-pdf demo</h1>
+  <nav><a href="verify.html">Go to /validate-image demo →</a></nav>
+
+  <div class="card">
+    <label for="api-url">API endpoint</label>
+    <input type="text" id="api-url" value="http://localhost:8000/mark-pdf">
+
+    <label for="file-input">PDF file</label>
+    <input type="file" id="file-input" accept="application/pdf">
+  </div>
+
+  <div class="card" id="viewer-card" hidden>
+    <div class="toolbar">
+      <button type="button" class="secondary" id="prev-btn">◀</button>
+      <span class="page-indicator" id="page-indicator"></span>
+      <button type="button" class="secondary" id="next-btn">▶</button>
+    </div>
+    <p class="hint">Drag on the page to draw a signature box. Click a box's ✕ to remove it.</p>
+    <div id="page-wrap">
+      <canvas id="page-canvas"></canvas>
+      <div id="overlay"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="placements-header">
+      <h2>Box placements</h2>
+      <button type="button" class="secondary" id="add-btn">+ Add box</button>
+    </div>
+    <p class="hint">
+      Coordinates in PDF points, origin at the top-left of the page
+      (A4 = 595 × 842 pt). Minimum box size: 62 × 40 pt. Pages are 0-based.
+      Rows stay in sync with the boxes drawn above.
+    </p>
+    <div id="placements"></div>
+
+    <button id="submit-btn" disabled>Mark PDF</button>
+  </div>
+
+  <div class="card" id="results-card" hidden>
+    <p id="status"></p>
+    <a id="download" download="marked.pdf" hidden>Download marked PDF</a>
+    <embed id="result-preview" type="application/pdf" hidden>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+  const MIN_W_PT = 62;
+  const MIN_H_PT = 40;
+  const DEFAULT_BOX = { x: 50, y: 400, width: 250, height: 80 };
+
+  const apiUrlInput = document.getElementById("api-url");
+  const fileInput = document.getElementById("file-input");
+  const viewerCard = document.getElementById("viewer-card");
+  const prevBtn = document.getElementById("prev-btn");
+  const nextBtn = document.getElementById("next-btn");
+  const pageIndicator = document.getElementById("page-indicator");
+  const pageWrap = document.getElementById("page-wrap");
+  const canvas = document.getElementById("page-canvas");
+  const overlay = document.getElementById("overlay");
+  const placementsEl = document.getElementById("placements");
+  const addBtn = document.getElementById("add-btn");
+  const submitBtn = document.getElementById("submit-btn");
+  const resultsCard = document.getElementById("results-card");
+  const statusEl = document.getElementById("status");
+  const downloadEl = document.getElementById("download");
+  const previewEl = document.getElementById("result-preview");
+
+  // Central state: rows and overlay boxes are both views of `placements`.
+  let placements = [];
+  let nextUid = 1;
+  let nextBoxId = 1;
+
+  let pdfDoc = null;
+  let currentPage = 0;
+  let pagePt = { width: 595, height: 842 }; // current page size in PDF points
+  let viewScale = 1; // CSS pixels per PDF point of the rendered page
+
+  // --- state helpers -------------------------------------------------------
+
+  function addPlacement(fields) {
+    const placement = { uid: nextUid++, box_id: nextBoxId++, ...fields };
+    placements.push(placement);
+    renderRows();
+    renderOverlayBoxes();
+    updateSubmitState();
+    return placement;
+  }
+
+  function removePlacement(uid) {
+    placements = placements.filter((p) => p.uid !== uid);
+    renderRows();
+    renderOverlayBoxes();
+    updateSubmitState();
+  }
+
+  function updateSubmitState() {
+    submitBtn.disabled = !fileInput.files[0] || placements.length === 0;
+  }
+
+  // --- PDF viewer ----------------------------------------------------------
+
+  async function loadPdf(file) {
+    const data = await file.arrayBuffer();
+    pdfDoc = await pdfjsLib.getDocument({ data }).promise;
+    currentPage = 0;
+    viewerCard.hidden = false;
+    await renderPage();
+  }
+
+  async function renderPage() {
+    const page = await pdfDoc.getPage(currentPage + 1);
+    const base = page.getViewport({ scale: 1 });
+    pagePt = { width: base.width, height: base.height };
+
+    const cssWidth = Math.min(viewerCard.clientWidth - 42, base.width * 1.2);
+    viewScale = cssWidth / base.width;
+    const dpr = window.devicePixelRatio || 1;
+    const viewport = page.getViewport({ scale: viewScale * dpr });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    canvas.style.width = `${viewport.width / dpr}px`;
+    canvas.style.height = `${viewport.height / dpr}px`;
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+
+    pageIndicator.textContent = `Page ${currentPage + 1} / ${pdfDoc.numPages}`;
+    prevBtn.disabled = currentPage === 0;
+    nextBtn.disabled = currentPage === pdfDoc.numPages - 1;
+    renderOverlayBoxes();
+  }
+
+  prevBtn.addEventListener("click", () => { currentPage -= 1; renderPage(); });
+  nextBtn.addEventListener("click", () => { currentPage += 1; renderPage(); });
+
+  // --- overlay: existing boxes --------------------------------------------
+
+  function renderOverlayBoxes() {
+    overlay.querySelectorAll(".sel-box:not(.preview)").forEach((el) => el.remove());
+    if (!pdfDoc) return;
+    for (const placement of placements) {
+      if (placement.page !== currentPage) continue;
+      const el = document.createElement("div");
+      el.className = "sel-box";
+      el.style.left = `${placement.x * viewScale}px`;
+      el.style.top = `${placement.y * viewScale}px`;
+      el.style.width = `${placement.width * viewScale}px`;
+      el.style.height = `${placement.height * viewScale}px`;
+
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = `box ${placement.box_id}`;
+
+      const del = document.createElement("button");
+      del.className = "delete";
+      del.textContent = "✕";
+      del.title = "Remove this box";
+      del.addEventListener("click", () => removePlacement(placement.uid));
+
+      el.append(tag, del);
+      overlay.appendChild(el);
+    }
+  }
+
+  // --- overlay: drag to draw ----------------------------------------------
+
+  let dragStart = null;
+  let previewBox = null;
+
+  function overlayPoint(event) {
+    const rect = overlay.getBoundingClientRect();
+    return {
+      x: Math.min(Math.max(event.clientX - rect.left, 0), rect.width),
+      y: Math.min(Math.max(event.clientY - rect.top, 0), rect.height),
+    };
+  }
+
+  overlay.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".delete")) return;
+    dragStart = overlayPoint(event);
+    overlay.setPointerCapture(event.pointerId);
+    previewBox = document.createElement("div");
+    previewBox.className = "sel-box preview";
+    overlay.appendChild(previewBox);
+  });
+
+  overlay.addEventListener("pointermove", (event) => {
+    if (!dragStart) return;
+    const point = overlayPoint(event);
+    previewBox.style.left = `${Math.min(dragStart.x, point.x)}px`;
+    previewBox.style.top = `${Math.min(dragStart.y, point.y)}px`;
+    previewBox.style.width = `${Math.abs(point.x - dragStart.x)}px`;
+    previewBox.style.height = `${Math.abs(point.y - dragStart.y)}px`;
+  });
+
+  overlay.addEventListener("pointerup", (event) => {
+    if (!dragStart) return;
+    const point = overlayPoint(event);
+    const start = dragStart;
+    dragStart = null;
+    previewBox.remove();
+    previewBox = null;
+
+    // Ignore accidental clicks (no real drag).
+    if (Math.abs(point.x - start.x) < 5 && Math.abs(point.y - start.y) < 5) return;
+
+    const round = (value) => Math.round(value * 10) / 10;
+    let x = Math.min(start.x, point.x) / viewScale;
+    let y = Math.min(start.y, point.y) / viewScale;
+    let width = Math.max(Math.abs(point.x - start.x) / viewScale, MIN_W_PT);
+    let height = Math.max(Math.abs(point.y - start.y) / viewScale, MIN_H_PT);
+    // Keep the (possibly minimum-snapped) box inside the page.
+    x = Math.max(0, Math.min(x, pagePt.width - width));
+    y = Math.max(0, Math.min(y, pagePt.height - height));
+
+    addPlacement({
+      page: currentPage,
+      x: round(x),
+      y: round(y),
+      width: round(width),
+      height: round(height),
+    });
+  });
+
+  // --- placement rows (two-way sync) ----------------------------------------
+
+  const FIELDS = [
+    { name: "box_id", label: "box_id", min: 1 },
+    { name: "page", label: "page", min: 0 },
+    { name: "x", label: "x (pt)", min: 0 },
+    { name: "y", label: "y (pt)", min: 0 },
+    { name: "width", label: "width (pt)", min: MIN_W_PT },
+    { name: "height", label: "height (pt)", min: MIN_H_PT },
+  ];
+
+  function renderRows() {
+    placementsEl.innerHTML = "";
+    for (const placement of placements) {
+      const row = document.createElement("div");
+      row.className = "placement";
+      for (const field of FIELDS) {
+        const wrapper = document.createElement("div");
+        const label = document.createElement("label");
+        label.textContent = field.label;
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = field.min;
+        input.value = placement[field.name];
+        input.addEventListener("input", () => {
+          placement[field.name] = Number(input.value);
+          renderOverlayBoxes();
+        });
+        wrapper.append(label, input);
+        row.appendChild(wrapper);
+      }
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "remove";
+      remove.textContent = "✕";
+      remove.title = "Remove this box";
+      remove.addEventListener("click", () => removePlacement(placement.uid));
+      row.appendChild(remove);
+      placementsEl.appendChild(row);
+    }
+  }
+
+  addBtn.addEventListener("click", () => {
+    addPlacement({ page: pdfDoc ? currentPage : 0, ...DEFAULT_BOX });
+  });
+
+  fileInput.addEventListener("change", async () => {
+    updateSubmitState();
+    const file = fileInput.files[0];
+    if (!file) {
+      viewerCard.hidden = true;
+      pdfDoc = null;
+      return;
+    }
+    try {
+      await loadPdf(file);
+    } catch (error) {
+      viewerCard.hidden = true;
+      pdfDoc = null;
+      resultsCard.hidden = false;
+      statusEl.className = "error";
+      statusEl.textContent = `Could not render PDF: ${error.message}`;
+    }
+  });
+
+  // --- submit ----------------------------------------------------------------
+
+  submitBtn.addEventListener("click", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Marking…";
+    resultsCard.hidden = false;
+    statusEl.className = "";
+    statusEl.textContent = "Uploading…";
+    downloadEl.hidden = true;
+    previewEl.hidden = true;
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append(
+      "boxes",
+      JSON.stringify(placements.map(({ uid, ...fields }) => fields)),
+    );
+
+    try {
+      const response = await fetch(apiUrlInput.value, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let detail = `HTTP ${response.status}`;
+        try {
+          const body = await response.json();
+          if (body.detail) detail += ` — ${JSON.stringify(body.detail)}`;
+        } catch { /* non-JSON body */ }
+        throw new Error(detail);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      statusEl.textContent = "PDF marked.";
+      downloadEl.href = url;
+      downloadEl.hidden = false;
+      previewEl.src = url;
+      previewEl.hidden = false;
+    } catch (error) {
+      statusEl.className = "error";
+      statusEl.textContent =
+        error instanceof TypeError
+          ? `Request failed: ${error.message}\n` +
+            "Likely causes: API not running, wrong URL, or CORS blocked."
+          : `Error: ${error.message}`;
+    } finally {
+      submitBtn.textContent = "Mark PDF";
+      updateSubmitState();
+    }
+  });
+</script>
+</body>
+</html>

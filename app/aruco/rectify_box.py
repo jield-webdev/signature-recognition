@@ -11,7 +11,10 @@ PX_PER_PT = 4
 
 def _marker_destination(x: float, y: float, size: float) -> np.ndarray:
     """Corner coordinates (TL, TR, BR, BL) of a square marker placed at (x, y)."""
-    return np.float32([[x, y], [x + size, y], [x + size, y + size], [x, y + size]])
+    return np.array(
+        [[x, y], [x + size, y], [x + size, y + size], [x, y + size]],
+        dtype=np.float32,
+    )
 
 
 def rectify_box(
@@ -30,10 +33,10 @@ def rectify_box(
     marker_px = MARKER_SIZE * PX_PER_PT
 
     plane = cv2.getPerspectiveTransform(
-        np.float32(top_left_corners), _marker_destination(0, 0, marker_px)
+        top_left_corners.astype(np.float32), _marker_destination(0, 0, marker_px)
     )
     projected = cv2.perspectiveTransform(
-        np.float32(bottom_right_corners).reshape(-1, 1, 2), plane
+        bottom_right_corners.astype(np.float32).reshape(-1, 1, 2), plane
     ).reshape(4, 2)
     box_w, box_h = projected[2]  # the BR marker's BR corner = the box's BR corner
     if box_w <= marker_px or box_h <= marker_px:

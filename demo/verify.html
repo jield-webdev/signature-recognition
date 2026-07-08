@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Validate Image Demo</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --border: #d9dde3;
+    --text: #1d2430;
+    --muted: #667085;
+    --accent: #2563eb;
+    --ok: #16803c;
+    --ok-bg: #dcfce7;
+    --bad: #b42318;
+    --bad-bg: #fee4e2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 2rem 1rem;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  nav { margin-bottom: 1rem; font-size: .9rem; }
+  nav a { color: var(--accent); }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .3rem; }
+  input[type="text"] {
+    width: 100%;
+    padding: .5rem .65rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font: inherit;
+    margin-bottom: 1rem;
+  }
+  input[type="file"] { display: block; margin-bottom: 1rem; }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    padding: .55rem 1.2rem;
+    font: inherit;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  #preview {
+    display: none;
+    max-width: 100%;
+    max-height: 300px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 1rem;
+  }
+  #status { margin: 0 0 .75rem; font-weight: 600; }
+  #status.error { color: var(--bad); font-weight: 400; white-space: pre-wrap; }
+  .box {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .75rem;
+    margin-bottom: .75rem;
+  }
+  .box img {
+    max-width: 260px;
+    max-height: 160px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #fff;
+  }
+  .box-meta { font-size: .95rem; }
+  .box-meta .id { font-weight: 600; margin-bottom: .4rem; }
+  .badge {
+    display: inline-block;
+    padding: .15rem .6rem;
+    border-radius: 999px;
+    font-size: .8rem;
+    font-weight: 600;
+  }
+  .badge.signed { background: var(--ok-bg); color: var(--ok); }
+  .badge.unsigned { background: var(--bad-bg); color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Signature recognition — /validate-image demo</h1>
+  <nav><a href="mark_pdf.html">Go to /mark-pdf demo →</a></nav>
+
+  <div class="card">
+    <label for="api-url">API endpoint</label>
+    <input type="text" id="api-url" value="http://localhost:8000/validate-image">
+
+    <label for="file-input">Image (png, jpeg, bmp, tiff, webp)</label>
+    <input type="file" id="file-input"
+           accept="image/png,image/jpeg,image/bmp,image/tiff,image/webp">
+
+    <img id="preview" alt="Selected image preview">
+
+    <button id="submit-btn" disabled>Validate image</button>
+  </div>
+
+  <div class="card" id="results-card" hidden>
+    <p id="status"></p>
+    <div id="boxes"></div>
+  </div>
+</main>
+
+<script>
+  const apiUrlInput = document.getElementById("api-url");
+  const fileInput = document.getElementById("file-input");
+  const preview = document.getElementById("preview");
+  const submitBtn = document.getElementById("submit-btn");
+  const resultsCard = document.getElementById("results-card");
+  const statusEl = document.getElementById("status");
+  const boxesEl = document.getElementById("boxes");
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+    submitBtn.disabled = !file;
+    if (file) {
+      preview.src = URL.createObjectURL(file);
+      preview.style.display = "block";
+    } else {
+      preview.style.display = "none";
+    }
+  });
+
+  submitBtn.addEventListener("click", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Validating…";
+    resultsCard.hidden = false;
+    statusEl.className = "";
+    statusEl.textContent = "Uploading…";
+    boxesEl.innerHTML = "";
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch(apiUrlInput.value, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let detail = `HTTP ${response.status}`;
+        try {
+          const body = await response.json();
+          if (body.detail) detail += ` — ${JSON.stringify(body.detail)}`;
+        } catch { /* non-JSON body */ }
+        throw new Error(detail);
+      }
+
+      const data = await response.json();
+      renderBoxes(data.boxes);
+    } catch (error) {
+      statusEl.className = "error";
+      statusEl.textContent =
+        error instanceof TypeError
+          ? `Request failed: ${error.message}\n` +
+            "Likely causes: API not running, wrong URL, or CORS blocked " +
+            "(the app has no CORS middleware — serve or proxy accordingly)."
+          : `Error: ${error.message}`;
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Validate image";
+    }
+  });
+
+  function renderBoxes(boxes) {
+    if (!boxes || boxes.length === 0) {
+      statusEl.textContent = "No marks found.";
+      return;
+    }
+    statusEl.textContent = `${boxes.length} box${boxes.length === 1 ? "" : "es"} found.`;
+    for (const box of boxes) {
+      const div = document.createElement("div");
+      div.className = "box";
+
+      const img = document.createElement("img");
+      img.src = `data:image/webp;base64,${box.image}`;
+      img.alt = `Cropped box ${box.box_id}`;
+
+      const meta = document.createElement("div");
+      meta.className = "box-meta";
+
+      const id = document.createElement("div");
+      id.className = "id";
+      id.textContent = `box_id: ${box.box_id}`;
+
+      const badge = document.createElement("span");
+      badge.className = `badge ${box.is_signed ? "signed" : "unsigned"}`;
+      badge.textContent = box.is_signed ? "Signed" : "Not signed";
+
+      meta.append(id, badge);
+      div.append(img, meta);
+      boxesEl.appendChild(div);
+    }
+  }
+</script>
+</body>
+</html>

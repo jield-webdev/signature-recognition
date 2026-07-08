@@ -7,6 +7,7 @@ from aruco.detect_boxes import detect_boxes
 from aruco.dictionary import ARUCO_DICT
 from aruco.layout import DATAMATRIX_SIZE, GAP, MARGIN, MARKER_SIZE
 from aruco.mark_pdf import mark_pdf
+from aruco.placement import BoxPlacement
 from aruco.rectify_box import PX_PER_PT
 from aruco.utils import markers_for_slot
 
@@ -76,8 +77,16 @@ def _assert_crop_size(crop: np.ndarray, box_w_pt: float, box_h_pt: float) -> Non
 
 async def test_detects_single_box_from_marked_pdf(pdf_bytes):
     doc = fitz.open(stream=pdf_bytes(pages=1), filetype="pdf")
-    await mark_pdf(doc, box_id=250000)
     page_w, page_h = doc[0].rect.width, doc[0].rect.height
+    placement = BoxPlacement(
+        box_id=250000,
+        page=0,
+        x=MARGIN,
+        y=MARGIN,
+        width=page_w - 2 * MARGIN,
+        height=page_h - 2 * MARGIN,
+    )
+    await mark_pdf(doc, [placement])
 
     boxes = await detect_boxes(_rasterize(doc[0]))
 

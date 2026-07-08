@@ -5,11 +5,24 @@ import fitz
 import numpy as np
 
 from aruco.mark_pdf import mark_pdf
+from aruco.placement import BoxPlacement
+
+
+def _page_placement(page: fitz.Page, box_id: int, margin: float = 8) -> BoxPlacement:
+    """A single box spanning the whole page except for a small margin."""
+    return BoxPlacement(
+        box_id=box_id,
+        page=0,
+        x=margin,
+        y=margin,
+        width=page.rect.width - 2 * margin,
+        height=page.rect.height - 2 * margin,
+    )
 
 
 async def test_returns_detected_boxes_with_cropped_images(client, pdf_bytes):
     doc = fitz.open(stream=pdf_bytes(pages=1), filetype="pdf")
-    await mark_pdf(doc, box_id=123)
+    await mark_pdf(doc, [_page_placement(doc[0], box_id=123)])
     pix = doc[0].get_pixmap(matrix=fitz.Matrix(6, 6), colorspace=fitz.csGRAY)
     image = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width)
     success, encoded_image = cv2.imencode(".png", image)
@@ -33,7 +46,7 @@ async def test_returns_detected_boxes_with_cropped_images(client, pdf_bytes):
 
 async def test_reports_signed_box(client, pdf_bytes):
     doc = fitz.open(stream=pdf_bytes(pages=1), filetype="pdf")
-    await mark_pdf(doc, box_id=123)
+    await mark_pdf(doc, [_page_placement(doc[0], box_id=123)])
     pix = doc[0].get_pixmap(matrix=fitz.Matrix(6, 6), colorspace=fitz.csGRAY)
     image = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width).copy()
     h, w = image.shape
