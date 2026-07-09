@@ -1,8 +1,8 @@
 import numpy as np
 from cv2.typing import MatLike
 
-from aruco.layout import DATAMATRIX_SIZE, GAP, MARKER_SIZE
-from aruco.rectify_box import PX_PER_PT
+from layout.constants import DATAMATRIX_SIZE, GAP, MARKER_SIZE
+from image.rectify_box import PX_PER_PT
 
 # Rectification is not pixel-perfect: antialiased symbol edges smear a few
 # pixels past their nominal rectangles. 8 px of padding absorbs that and also

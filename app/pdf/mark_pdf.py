@@ -2,13 +2,12 @@ from collections import defaultdict
 
 import cv2
 import fitz
-import numpy as np
-import zxingcpp
 
 from aruco.dictionary import ARUCO_DICT
-from aruco.layout import DATAMATRIX_SIZE, GAP, MARKER_SIZE
-from aruco.placement import BoxPlacement
-from aruco.utils import markers_for_slot
+from aruco.slots import markers_for_slot
+from boxes.placement import BoxPlacement
+from datamatrix.encode_datamatrix import encode_datamatrix
+from layout.constants import DATAMATRIX_SIZE, GAP, MARKER_SIZE
 
 
 def _stamp_box(page: fitz.Page, slot: int, box: BoxPlacement) -> None:
@@ -27,8 +26,7 @@ def _stamp_box(page: fitz.Page, slot: int, box: BoxPlacement) -> None:
         rect = fitz.Rect(x, y, x + MARKER_SIZE, y + MARKER_SIZE)
         page.insert_image(rect, stream=buf.tobytes())
 
-    barcode = zxingcpp.create_barcode(str(box.box_id), zxingcpp.BarcodeFormat.DataMatrix)
-    dm_img = np.array(zxingcpp.write_barcode_to_image(barcode, scale=40))
+    dm_img = encode_datamatrix(str(box.box_id))
     ok, buf = cv2.imencode(".png", dm_img)
     x = box.x + MARKER_SIZE + GAP
     rect = fitz.Rect(x, box.y, x + DATAMATRIX_SIZE, box.y + DATAMATRIX_SIZE)

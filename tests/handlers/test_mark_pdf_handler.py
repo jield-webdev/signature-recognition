@@ -1,6 +1,7 @@
 import json
 
-from aruco.utils import MAX_BOX_ID, MAX_SLOTS_PER_PAGE
+from aruco.slots import MAX_SLOTS_PER_PAGE
+from boxes.box_id import MAX_BOX_ID
 
 
 def _boxes(box_id: int = 1, page: int = 0, x: float = 50, y: float = 400,

@@ -1,13 +1,14 @@
 import cv2
 import numpy as np
-import zxingcpp
 from cv2.typing import MatLike
 
-from aruco.analyze_ink import is_signed
 from aruco.detect_markers import detect_markers
-from aruco.layout import DATAMATRIX_SIZE, GAP, MARKER_SIZE
-from aruco.rectify_box import rectify_box
-from aruco.utils import is_valid_box_id
+from boxes.box_id import is_valid_box_id
+from datamatrix.decode_datamatrix import decode_datamatrix
+from image.is_signed import is_signed
+from image.rectify_box import rectify_box
+from image.remove_shadows import remove_shadows
+from layout.constants import DATAMATRIX_SIZE, GAP, MARKER_SIZE
 
 # Side of the canonical (rectified) marker square, in pixels. The stamped
 # DataMatrix is 10 modules plus quiet zone at the same print size, so this
@@ -18,7 +19,7 @@ CANONICAL_MARKER_PX = 120
 CROP_PADDING_PX = 8
 
 
-def _decode_datamatrix(image: MatLike, marker_corners: np.ndarray) -> int | None:
+def _decode_box_id(image: MatLike, marker_corners: np.ndarray) -> int | None:
     """Rectify the neighborhood of a top-left marker and decode its DataMatrix.
 
     The marker's 4 detected corners define the local perspective of the page
@@ -51,10 +52,10 @@ def _decode_datamatrix(image: MatLike, marker_corners: np.ndarray) -> int | None
         image, homography, (width, height), borderValue=255
     )
 
-    result = zxingcpp.read_barcode(crop, formats=zxingcpp.BarcodeFormat.DataMatrix)
-    if result is None or not result.text.isdigit():
+    text = decode_datamatrix(crop)
+    if text is None or not text.isdigit():
         return None
-    box_id = int(result.text)
+    box_id = int(text)
     return box_id if is_valid_box_id(box_id) else None
 
 
@@ -82,9 +83,11 @@ async def detect_boxes(image: MatLike) -> list[dict]:
 
         boxes.append(
             {
-                "box_id": _decode_datamatrix(image, top_left),
+                "box_id": _decode_box_id(image, top_left),
                 "image": crop,
-                "is_signed": is_signed(crop),
+                # Shadow removal only feeds the classifier; the reported crop
+                # stays faithful to the photo.
+                "is_signed": is_signed(remove_shadows(crop)),
             }
         )
     return boxes

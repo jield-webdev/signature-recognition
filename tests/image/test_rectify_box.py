@@ -2,9 +2,9 @@ import cv2
 import numpy as np
 
 from aruco.dictionary import ARUCO_DICT
-from aruco.layout import MARKER_SIZE
-from aruco.rectify_box import PX_PER_PT, rectify_box
-from aruco.utils import markers_for_slot
+from aruco.slots import markers_for_slot
+from image.rectify_box import PX_PER_PT, rectify_box
+from layout.constants import MARKER_SIZE
 
 # Pixels per print point when composing synthetic photos.
 PPP = 6

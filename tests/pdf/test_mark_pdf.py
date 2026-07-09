@@ -4,8 +4,8 @@ import numpy as np
 import zxingcpp
 
 from aruco.dictionary import ARUCO_DICT
-from aruco.mark_pdf import mark_pdf
-from aruco.placement import BoxPlacement
+from boxes.placement import BoxPlacement
+from pdf.mark_pdf import mark_pdf
 
 
 def _rasterize(page: fitz.Page, zoom: int = 6) -> np.ndarray:

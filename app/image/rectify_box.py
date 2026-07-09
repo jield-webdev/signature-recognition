@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from cv2.typing import MatLike
 
-from aruco.layout import MARKER_SIZE
+from layout.constants import MARKER_SIZE
 
 # Resolution of the rectified crop: 4 px per print point (a 250 pt wide box
 # comes out 1000 px wide).

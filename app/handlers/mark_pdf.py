@@ -4,9 +4,8 @@ from fastapi import UploadFile, HTTPException, status
 from fastapi.responses import Response
 from pydantic import TypeAdapter, ValidationError
 
-from aruco.mark_pdf import mark_pdf
-from aruco.placement import BoxPlacement
-from aruco.utils import MAX_SLOTS_PER_PAGE
+from aruco.slots import MAX_SLOTS_PER_PAGE
+from boxes.placement import BoxPlacement
 from file.errors import (
     EmptyFileError,
     EmptyPdfError,
@@ -15,6 +14,7 @@ from file.errors import (
     UnsupportedContentTypeError,
 )
 from file.read_pdf import read_pdf
+from pdf.mark_pdf import mark_pdf
 
 _placements_adapter = TypeAdapter(list[BoxPlacement])
 

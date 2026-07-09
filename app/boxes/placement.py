@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
-from aruco.layout import MIN_BOX_HEIGHT, MIN_BOX_WIDTH
-from aruco.utils import MAX_BOX_ID
+from layout.constants import MIN_BOX_HEIGHT, MIN_BOX_WIDTH
+from boxes.box_id import MAX_BOX_ID
 
 
 class BoxPlacement(BaseModel):

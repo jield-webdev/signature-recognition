@@ -1,9 +1,9 @@
 import cv2
 import numpy as np
 
-from aruco.analyze_ink import is_signed
-from aruco.layout import DATAMATRIX_SIZE, GAP, MARKER_SIZE
-from aruco.rectify_box import PX_PER_PT
+from image.is_signed import is_signed
+from image.rectify_box import PX_PER_PT
+from layout.constants import DATAMATRIX_SIZE, GAP, MARKER_SIZE
 
 
 def _blank_crop(

@@ -35,11 +35,4 @@ async def parse_image(file: UploadFile) -> MatLike:
     if image is None:
         raise InvalidImageError("Invalid image file.")
 
-    if len(image.shape) == 2:  # Grayscale image
-        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-    elif image.shape[2] == 4:  # RGBA image
-        image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
-
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
     return image

@@ -3,13 +3,13 @@ import fitz
 import numpy as np
 import zxingcpp
 
-from aruco.detect_boxes import detect_boxes
 from aruco.dictionary import ARUCO_DICT
-from aruco.layout import DATAMATRIX_SIZE, GAP, MARGIN, MARKER_SIZE
-from aruco.mark_pdf import mark_pdf
-from aruco.placement import BoxPlacement
-from aruco.rectify_box import PX_PER_PT
-from aruco.utils import markers_for_slot
+from aruco.slots import markers_for_slot
+from boxes.detect_boxes import detect_boxes
+from boxes.placement import BoxPlacement
+from image.rectify_box import PX_PER_PT
+from layout.constants import DATAMATRIX_SIZE, GAP, MARGIN, MARKER_SIZE
+from pdf.mark_pdf import mark_pdf
 
 # Pixels per print point when composing synthetic photos.
 PPP = 6
@@ -67,6 +67,14 @@ def _stamp_box(
         cv2.polylines(canvas, [squiggle], isClosed=False, color=0, thickness=6)
 
 
+def _cast_shadow(canvas: np.ndarray, value: int = 140) -> np.ndarray:
+    """Overlay a soft horizontal shadow band crossing the first box's interior."""
+    shade = np.full_like(canvas, 255)
+    shade[400:700, :] = value
+    shade = cv2.GaussianBlur(shade, (151, 151), 0)
+    return cv2.min(canvas, shade)
+
+
 def _assert_crop_size(crop: np.ndarray, box_w_pt: float, box_h_pt: float) -> None:
     """The rectified crop should measure box size in print points times PX_PER_PT."""
     expected_w, expected_h = box_w_pt * PX_PER_PT, box_h_pt * PX_PER_PT
@@ -106,6 +114,26 @@ async def test_reports_signed_and_unsigned_boxes():
     assert [box["box_id"] for box in boxes] == [11, 22]
     assert boxes[0]["is_signed"] is True
     assert boxes[1]["is_signed"] is False
+
+
+async def test_shadowed_unsigned_box_is_not_signed():
+    canvas = np.full((2000, 2200), 255, dtype=np.uint8)
+    _stamp_box(canvas, slot=0, box_id=11, x=100, y=100)
+
+    boxes = await detect_boxes(_cast_shadow(canvas))
+
+    assert [box["box_id"] for box in boxes] == [11]
+    assert boxes[0]["is_signed"] is False
+
+
+async def test_shadowed_signed_box_stays_signed():
+    canvas = np.full((2000, 2200), 255, dtype=np.uint8)
+    _stamp_box(canvas, slot=0, box_id=11, x=100, y=100, signed=True)
+
+    boxes = await detect_boxes(_cast_shadow(canvas))
+
+    assert [box["box_id"] for box in boxes] == [11]
+    assert boxes[0]["is_signed"] is True
 
 
 async def test_detects_multiple_boxes_each_cropped_independently():

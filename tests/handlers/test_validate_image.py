@@ -4,8 +4,8 @@ import cv2
 import fitz
 import numpy as np
 
-from aruco.mark_pdf import mark_pdf
-from aruco.placement import BoxPlacement
+from boxes.placement import BoxPlacement
+from pdf.mark_pdf import mark_pdf
 
 
 def _page_placement(page: fitz.Page, box_id: int, margin: float = 8) -> BoxPlacement:
