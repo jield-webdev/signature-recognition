@@ -8,11 +8,10 @@ from datamatrix.decode_datamatrix import decode_datamatrix
 from image.is_signed import is_signed
 from image.rectify_box import rectify_box
 from image.remove_shadows import remove_shadows
+from image.to_grayscale import to_grayscale
 from layout.constants import DATAMATRIX_SIZE, GAP, MARKER_SIZE
 
-# Side of the canonical (rectified) marker square, in pixels. The stamped
-# DataMatrix is 10 modules plus quiet zone at the same print size, so this
-# leaves ~10 px per module after rectification.
+# Side of the canonical (rectified) marker square, in pixels. 
 CANONICAL_MARKER_PX = 120
 
 # A few extra rectified pixels around the DataMatrix crop act as quiet zone.
@@ -83,10 +82,8 @@ async def detect_boxes(image: MatLike) -> list[dict]:
 
         boxes.append(
             {
-                "box_id": _decode_box_id(image, top_left),
+                "box_id": _decode_box_id(to_grayscale(image), top_left),
                 "image": crop,
-                # Shadow removal only feeds the classifier; the reported crop
-                # stays faithful to the photo.
                 "is_signed": is_signed(remove_shadows(crop)),
             }
         )

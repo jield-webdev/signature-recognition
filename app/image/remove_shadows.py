@@ -25,7 +25,7 @@ def _multiscale_retinex(lightness: np.ndarray) -> np.ndarray:
         blur = cv2.GaussianBlur(lightness, (scale, scale), 0)
         retinex += np.log(lightness + 1) - np.log(blur + 1)
     retinex /= len(_RETINEX_SCALES)
-    return cv2.normalize(retinex, None, 0, 255, cv2.NORM_MINMAX)
+    return cv2.normalize(retinex, retinex, 0, 255, cv2.NORM_MINMAX)
 
 
 def _shadow_mask(

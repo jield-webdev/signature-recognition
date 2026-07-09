@@ -3,6 +3,7 @@ import numpy as np
 from cv2.typing import MatLike
 
 from aruco.dictionary import ARUCO_DICT
+from image.to_grayscale import to_grayscale
 
 
 async def detect_markers(image: MatLike) -> list[tuple[int, np.ndarray]]:
@@ -17,7 +18,7 @@ async def detect_markers(image: MatLike) -> list[tuple[int, np.ndarray]]:
     parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
     detector = cv2.aruco.ArucoDetector(ARUCO_DICT, parameters)
 
-    corners, ids, rejected = detector.detectMarkers(image)
+    corners, ids, rejected = detector.detectMarkers(to_grayscale(image))
 
     if ids is None:
         return []
