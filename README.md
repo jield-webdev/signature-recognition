@@ -11,9 +11,9 @@ Each signature box on a printed document carries two kinds of symbols, with sepa
 
 ### Marker scheme
 
-- **Marker ids encode page slots, not identity.** Slot `n` on a page uses marker ids `(2n, 2n+1)`: the even id is always the top-left marker, the odd id the bottom-right. With 50 ids that allows up to 25 boxes per page. Currently the marking endpoint stamps a single box (slot 0, ids 0 and 1) spanning the whole page.
+- **Marker ids encode page slots, not identity.** Slot `n` on a page uses marker ids `(2n, 2n+1)`: the even id is always the top-left marker, the odd id the bottom-right. With 50 ids that allows up to 25 boxes per page. Slots restart on every page — detection only ever works on a photo of one page, so ids only need to be unique within a page — and are assigned to a page's requested boxes in request order.
 - **Box ids are opaque.** Each box id maps to a string in the caller's database; this service never sees those strings. Valid ids are integers `1`–`999999` — 6 decimal digits keeps the DataMatrix at its smallest symbol sizes.
-- **Print sizes.** ArUco markers and the DataMatrix are both stamped at ~18 pt. A white gap separates the marker border from the DataMatrix quiet zone.
+- **Print sizes.** ArUco markers and the DataMatrix are both stamped at 24 pt, separated by a 4 pt white gap so the marker border and the DataMatrix quiet zone don't touch. The smallest box a caller may request must fit the top-left marker, the gap, the DataMatrix, another gap and the bottom-right marker — 80 pt wide by 52 pt tall.
 
 ### Detection pipeline
 
@@ -28,14 +28,26 @@ The full pipeline — identity detection and ink analysis — is implemented.
 
 ### `POST /mark-pdf`
 
-Accepts a PDF document plus a box id, and returns the same PDF with the box's ArUco marker pair on the first page's diagonal and a DataMatrix encoding the id next to the top-left marker.
+Accepts a PDF document plus a list of box placements, and returns the same PDF with, for each placement, an ArUco marker pair on the box's diagonal and a DataMatrix encoding its id next to the top-left marker.
 
 Request content type: `multipart/form-data`
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `file` | PDF file | Yes | Original PDF document. |
-| `box_id` | Integer (1–999999) | Yes | Box identifier assigned by the caller's registry. |
+| `boxes` | JSON string | Yes | Non-empty JSON array of box placements (see below). |
+
+Each entry in `boxes` describes one box in PDF points with a top-left origin:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `box_id` | Integer (1–999999) | Box identifier assigned by the caller's registry. |
+| `page` | Integer (≥ 0) | Zero-based page index to stamp. |
+| `x`, `y` | Number (≥ 0) | Top-left corner of the box on the page. |
+| `width` | Number (≥ 80) | Box width; must fit the marker/DataMatrix/marker row. |
+| `height` | Number (≥ 52) | Box height; must fit the two stacked markers. |
+
+Placements are validated before anything is stamped: the box must fit inside its page, the page must exist, and a single page may hold at most 25 boxes.
 
 Successful response:
 
@@ -46,13 +58,13 @@ Example:
 ```bash
 curl -X POST http://localhost:8000/mark-pdf \
   -F "file=@contract.pdf;type=application/pdf" \
-  -F "box_id=12" \
+  -F 'boxes=[{"box_id":12,"page":0,"x":72,"y":600,"width":250,"height":80}]' \
   --output contract-with-marks.pdf
 ```
 
 ### `POST /validate-image`
 
-Accepts a photo of a printed, marked document and returns the boxes found in it, one entry per complete marker pair, ordered by slot. Each entry carries the box's rectified (perspective-removed) crop as a base64-encoded PNG and an `is_signed` flag from the ink analysis.
+Accepts a photo of a printed, marked document and returns the boxes found in it, one entry per complete marker pair, ordered by slot. Each entry carries the box's rectified (perspective-removed) crop as a base64-encoded WebP and an `is_signed` flag from the ink analysis.
 
 Request content type: `multipart/form-data`
 
@@ -65,8 +77,8 @@ Successful response:
 ```json
 {
   "boxes": [
-    { "box_id": 123, "image": "iVBORw0KGgo...", "is_signed": true },
-    { "box_id": null, "image": "iVBORw0KGgo...", "is_signed": false }
+    { "box_id": 123, "image": "UklGR... (base64 WebP)", "is_signed": true },
+    { "box_id": null, "image": "UklGR... (base64 WebP)", "is_signed": false }
   ]
 }
 ```
@@ -86,9 +98,9 @@ curl -X POST http://localhost:8000/validate-image \
 
 | Status | Meaning |
 | --- | --- |
-| `400 Bad Request` | Invalid, empty, or unreadable input; box id out of range. |
+| `400 Bad Request` | Invalid, empty, or unreadable input; malformed `boxes` JSON; box id out of range; a box that doesn't fit, targets a missing page, or overflows a page's 25-box capacity. |
 | `415 Unsupported Media Type` | Uploaded file type is not supported. |
-| `422 Unprocessable Entity` | Required form fields are missing or malformed. |
+| `422 Unprocessable Entity` | A required form field (`file` or `boxes`) is missing. |
 | `500 Internal Server Error` | Unexpected processing error. |
 
 ## Testing
