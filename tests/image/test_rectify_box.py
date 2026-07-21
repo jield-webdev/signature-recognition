@@ -86,6 +86,57 @@ def test_removes_perspective():
     assert _detect_ids(crop) == [0, 1]
 
 
+def test_recovers_size_under_corner_noise():
+    """Joint estimation keeps the size accurate despite detection noise.
+
+    Extrapolating the plane from the top-left marker alone amplifies
+    sub-pixel corner noise over the marker distance (errors of 10-50% on
+    tilted shots); the joint fit over both markers stays within a few
+    percent.
+    """
+    box_w_pt, box_h_pt = 250, 120
+    canvas, tl, br = _canvas_with_pair(100, 100, box_w_pt * PPP, box_h_pt * PPP)
+    h, w = canvas.shape
+    src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+    dst = np.float32([[80, 50], [w - 40, 0], [w, h], [0, h - 60]])
+    perspective = cv2.getPerspectiveTransform(src, dst)
+    warped = cv2.warpPerspective(canvas, perspective, (w, h), borderValue=255)
+    warped_tl = cv2.perspectiveTransform(tl.reshape(-1, 1, 2), perspective).reshape(4, 2)
+    warped_br = cv2.perspectiveTransform(br.reshape(-1, 1, 2), perspective).reshape(4, 2)
+
+    rng = np.random.default_rng(42)
+    expected_h, expected_w = box_h_pt * PX_PER_PT, box_w_pt * PX_PER_PT
+    for _ in range(20):
+        noisy_tl = (warped_tl + rng.normal(0, 0.3, (4, 2))).astype(np.float32)
+        noisy_br = (warped_br + rng.normal(0, 0.3, (4, 2))).astype(np.float32)
+
+        crop = rectify_box(warped, noisy_tl, noisy_br)
+
+        assert crop is not None
+        assert abs(crop.shape[0] - expected_h) <= expected_h * 0.05
+        assert abs(crop.shape[1] - expected_w) <= expected_w * 0.05
+
+
+def test_crop_is_upright_after_rotated_perspective():
+    canvas, tl, br = _canvas_with_pair(100, 100, 250 * PPP, 120 * PPP)
+    h, w = canvas.shape
+    src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+    # 90° rotation combined with a perspective tilt.
+    dst = np.float32([[h - 30, 40], [h, w - 50], [60, w], [0, 20]])
+    perspective = cv2.getPerspectiveTransform(src, dst)
+    warped = cv2.warpPerspective(canvas, perspective, (h, w), borderValue=255)
+    warped_tl = cv2.perspectiveTransform(tl.reshape(-1, 1, 2), perspective).reshape(4, 2)
+    warped_br = cv2.perspectiveTransform(br.reshape(-1, 1, 2), perspective).reshape(4, 2)
+
+    crop = rectify_box(warped, warped_tl, warped_br)
+
+    assert crop is not None
+    expected_h, expected_w = 120 * PX_PER_PT, 250 * PX_PER_PT
+    assert abs(crop.shape[0] - expected_h) <= expected_h * 0.02
+    assert abs(crop.shape[1] - expected_w) <= expected_w * 0.02
+    assert _detect_ids(crop) == [0, 1]
+
+
 def test_rejects_markers_not_on_a_diagonal():
     canvas, tl, br = _canvas_with_pair(100, 100, 250 * PPP, 120 * PPP)
     to_the_left = _square(0, 100, MARKER_SIZE * PPP)
