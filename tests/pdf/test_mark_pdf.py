@@ -50,6 +50,37 @@ async def test_stamped_page_decodes_back(pdf_bytes):
     assert result is not None and result.text == "250000"
 
 
+async def test_detects_markers_stamped_over_a_printed_cell_border(pdf_bytes):
+    """A box placed on an existing table cell must not lose its markers.
+
+    Without a quiet zone the cell's printed border runs flush against the
+    markers' black border; contour segmentation merges the two and both
+    markers drop out. Rasterized at zoom 4 the markers span ~96 px, the size
+    they come out at in a phone photo of a page, and the blur stands in for
+    the softness at that distance — neither marker survives without the
+    white patch underneath.
+    """
+    doc = fitz.open(stream=pdf_bytes(pages=1), filetype="pdf")
+    placement = _placement()
+    doc[0].draw_rect(
+        fitz.Rect(
+            placement.x,
+            placement.y,
+            placement.x + placement.width,
+            placement.y + placement.height,
+        ),
+        color=(0, 0, 0),
+        width=1,
+    )
+
+    await mark_pdf(doc, [placement])
+    image = cv2.GaussianBlur(_rasterize(doc[0], zoom=4), (0, 0), 2.5)
+
+    detector = cv2.aruco.ArucoDetector(ARUCO_DICT, cv2.aruco.DetectorParameters())
+    _, ids, _ = detector.detectMarkers(image)
+    assert ids is not None and sorted(ids.flatten().tolist()) == [0, 1]
+
+
 async def test_slots_advance_per_box_and_restart_per_page(pdf_bytes):
     doc = fitz.open(stream=pdf_bytes(pages=2), filetype="pdf")
 

@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from fastapi import HTTPException, UploadFile, status
 
-from boxes.detect_boxes import detect_boxes
+from boxes import detect_boxes
 from file.errors import EmptyFileError, InvalidImageError, UnsupportedContentTypeError
 from file.read_image import parse_image
 
