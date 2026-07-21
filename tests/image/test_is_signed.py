@@ -77,6 +77,24 @@ def test_sparse_speckle_is_not_signed():
     assert is_signed(crop) is False
 
 
+def test_printed_box_outline_is_not_signed():
+    """A box drawn as an outlined rectangle must not read as a signature."""
+    crop = _blank_crop()
+    _paint_symbols(crop)
+    cv2.rectangle(crop, (0, 0), (crop.shape[1] - 1, crop.shape[0] - 1), 0, thickness=5)
+
+    assert is_signed(crop) is False
+
+
+def test_signature_inside_an_outlined_box_is_signed():
+    crop = _blank_crop()
+    _paint_symbols(crop)
+    cv2.rectangle(crop, (0, 0), (crop.shape[1] - 1, crop.shape[0] - 1), 0, thickness=5)
+    _draw_signature(crop)
+
+    assert is_signed(crop) is True
+
+
 def test_fully_masked_tiny_crop_is_not_signed():
     crop = np.zeros((80, 80), dtype=np.uint8)
 
