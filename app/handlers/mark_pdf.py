@@ -91,7 +91,8 @@ async def mark_pdf_handler(file: UploadFile, boxes: str):
 
     try:
         marked_pdf = await mark_pdf(pdf, placements)
-        content = marked_pdf.convert_to_pdf()
+
+        content = marked_pdf.tobytes(garbage=3, deflate=True)
     except Exception as error:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

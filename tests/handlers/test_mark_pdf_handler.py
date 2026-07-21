@@ -1,5 +1,9 @@
 import json
 
+import cv2
+import fitz
+import numpy as np
+
 from aruco.slots import MAX_SLOTS_PER_PAGE
 from boxes.box_id import MAX_BOX_ID
 
@@ -38,6 +42,41 @@ def test_marks_boxes_on_several_pages(client, pdf_bytes):
 
     assert response.status_code == 200
     assert response.content.startswith(b"%PDF")
+
+
+def test_keeps_transparency_of_the_source_pdf(client):
+    # An RGBA image (stored as /SMask) plus a rect with fill and stroke alpha
+    # (stored as /ca and /CA in an /ExtGState). Serialising the marked document
+    # through convert_to_pdf() re-renders the page and loses both.
+    rgba = np.zeros((64, 64, 4), np.uint8)
+    rgba[..., 2] = 255
+    rgba[..., 3] = np.linspace(0, 255, 64, dtype=np.uint8)[None, :]
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_image(fitz.Rect(50, 50, 250, 250), stream=cv2.imencode(".png", rgba)[1].tobytes())
+    page.draw_rect(
+        fitz.Rect(300, 50, 500, 250),
+        color=(0, 0, 1),
+        fill=(1, 0, 0),
+        fill_opacity=0.4,
+        stroke_opacity=0.2,
+        width=5,
+    )
+
+    response = client.post(
+        "/mark-pdf",
+        files={"file": ("contract.pdf", doc.write(), "application/pdf")},
+        data={"boxes": _boxes()},
+    )
+
+    assert response.status_code == 200
+
+    marked = fitz.open(stream=response.content, filetype="pdf")
+    objects = [marked.xref_object(xref) for xref in range(1, marked.xref_length())]
+    assert any("/SMask" in obj for obj in objects)
+    assert any("/CA 0.2" in obj or "/CA .2" in obj for obj in objects)
+    assert any("/ca 0.4" in obj or "/ca .4" in obj for obj in objects)
 
 
 def test_rejects_box_id_below_range(client, pdf_bytes):
