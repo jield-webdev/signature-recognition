@@ -132,3 +132,23 @@ Open the interactive API documentation at:
 ```text
 http://localhost:8000/docs
 ```
+
+## Docker
+
+The repository ships a production image (no reload, no source mounts) and a Compose file.
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+The API is then available at `http://localhost:8000` (or whichever `HOST_PORT` you set).
+
+Configuration lives in `.env`:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `HOST_PORT` | `8000` | Port published on the host. The container always serves on 8000 internally; changing this only changes where it is exposed. |
+| `CORS_ALLOW_ORIGINS` | `*` | Comma-separated list of allowed origins, e.g. `https://app.example.com,https://admin.example.com`. Use `*` to allow any. |
+
+The image uses `opencv-python-headless`, so it needs no system GUI libraries.
