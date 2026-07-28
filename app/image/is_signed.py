@@ -3,6 +3,7 @@ from cv2.typing import MatLike
 
 from layout.constants import DATAMATRIX_SIZE, GAP, MARKER_SIZE
 from image.rectify_box import PX_PER_PT
+from image.to_grayscale import to_grayscale
 
 # Rectification is not pixel-perfect: antialiased symbol edges smear a few
 # pixels past their nominal rectangles. 8 px of padding absorbs that and also
@@ -36,7 +37,8 @@ def is_signed(crop: MatLike) -> bool:
     because even a heavy signature covers a few percent of it — and the box
     is signed when enough interior pixels are darker than that background.
     """
-    h, w = crop.shape[:2]
+    grayscale = to_grayscale(crop)
+    h, w = grayscale.shape[:2]
     marker = MARKER_SIZE * PX_PER_PT
     dm_left = (MARKER_SIZE + GAP) * PX_PER_PT
     dm_right = dm_left + DATAMATRIX_SIZE * PX_PER_PT
@@ -52,7 +54,7 @@ def is_signed(crop: MatLike) -> bool:
     mask[:, :inset] = False
     mask[:, max(w - inset, 0) :] = False
 
-    interior = crop[mask]
+    interior = grayscale[mask]
     if interior.size == 0:
         return False
 

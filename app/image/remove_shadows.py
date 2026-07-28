@@ -1,5 +1,5 @@
-import cv2
 import numpy as np
+from opencv_config import cv2
 from cv2.typing import MatLike
 
 # Blend weight between the original lightness and its retinex estimate inside

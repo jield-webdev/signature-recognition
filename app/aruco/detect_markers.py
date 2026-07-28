@@ -1,9 +1,9 @@
-import cv2
 import numpy as np
-from cv2.typing import MatLike
 
 from aruco.dictionary import ARUCO_DICT
 from image.to_grayscale import to_grayscale
+from opencv_config import cv2
+from cv2.typing import MatLike
 
 
 async def detect_markers(image: MatLike) -> list[tuple[int, np.ndarray]]:

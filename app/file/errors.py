@@ -2,6 +2,10 @@ class EmptyFileError(ValueError):
     pass
 
 
+class InputTooLargeError(ValueError):
+    pass
+
+
 class UnsupportedContentTypeError(ValueError):
     pass
 
@@ -17,4 +21,8 @@ class EmptyPdfError(ValueError):
 
 
 class EncryptedPdfError(ValueError):
+    pass
+
+
+class SignedPdfError(ValueError):
     pass

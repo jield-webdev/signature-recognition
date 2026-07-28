@@ -1,0 +1,34 @@
+services:
+  api:
+    build: .
+    command:
+      ["fastapi", "dev", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
+    volumes:
+      - ./app:/app/app
+    env_file: .env
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.signature-recognition.loadbalancer.server.port=8000
+      - traefik.http.routers.signature-recognition-http.service=signature-recognition
+      - traefik.http.routers.signature-recognition-http.rule=Host(`signature-recognition.docker.localhost`)
+      - traefik.http.routers.signature-recognition-http.entrypoints=https
+      - traefik.http.routers.signature-recognition-http.tls=true
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - signature-recognition
+
+networks:
+  signature-recognition:
+    external: true

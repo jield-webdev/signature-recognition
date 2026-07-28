@@ -10,16 +10,35 @@ from file.errors import (
     EmptyFileError,
     EmptyPdfError,
     EncryptedPdfError,
+    InputTooLargeError,
     InvalidPdfError,
+    SignedPdfError,
     UnsupportedContentTypeError,
 )
 from file.read_pdf import read_pdf
-from pdf.mark_pdf import mark_pdf
+from layout.constants import QUIET_ZONE
+from limits import MAX_BOXES_JSON_BYTES, MAX_BOXES_PER_REQUEST
+from pdf.mark_pdf import mark_pdf, symbol_rects
 
 _placements_adapter = TypeAdapter(list[BoxPlacement])
 
 
+def _rects_overlap(first, second) -> bool:
+    return not (
+        first.x1 <= second.x0
+        or first.x0 >= second.x1
+        or first.y1 <= second.y0
+        or first.y0 >= second.y1
+    )
+
+
 async def mark_pdf_handler(file: UploadFile, boxes: str):
+    if len(boxes.encode()) > MAX_BOXES_JSON_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"Boxes JSON exceeds {MAX_BOXES_JSON_BYTES} byte limit.",
+        )
+
     try:
         placements = _placements_adapter.validate_json(boxes)
     except ValidationError as error:
@@ -32,6 +51,11 @@ async def mark_pdf_handler(file: UploadFile, boxes: str):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one box is required.",
+        )
+    if len(placements) > MAX_BOXES_PER_REQUEST:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"Boxes exceed {MAX_BOXES_PER_REQUEST} placement limit.",
         )
 
     boxes_per_page = Counter(placement.page for placement in placements)
@@ -70,33 +94,60 @@ async def mark_pdf_handler(file: UploadFile, boxes: str):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(error),
         ) from error
-
-    for placement in placements:
-        if placement.page >= len(pdf):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Page {placement.page} does not exist. "
-                f"The PDF has {len(pdf)} page(s).",
-            )
-        page_rect = pdf[placement.page].rect
-        if (
-            placement.x + placement.width > page_rect.width
-            or placement.y + placement.height > page_rect.height
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Box {placement.box_id} does not fit inside page "
-                f"{placement.page} ({page_rect.width} x {page_rect.height} pt).",
-            )
+    except InputTooLargeError as error:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=str(error),
+        ) from error
+    except SignedPdfError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
 
     try:
-        marked_pdf = await mark_pdf(pdf, placements)
+        symbol_regions_by_page = {}
+        for placement in placements:
+            if placement.page >= len(pdf):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Page {placement.page} does not exist. "
+                    f"The PDF has {len(pdf)} page(s).",
+                )
+            page_rect = pdf[placement.page].rect
+            if (
+                placement.x < QUIET_ZONE
+                or placement.y < QUIET_ZONE
+                or placement.x + placement.width + QUIET_ZONE > page_rect.width
+                or placement.y + placement.height + QUIET_ZONE > page_rect.height
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Box {placement.box_id} does not fit inside page "
+                    f"{placement.page} with its quiet zone "
+                    f"({page_rect.width} x {page_rect.height} pt).",
+                )
 
+            regions = symbol_regions_by_page.setdefault(placement.page, [])
+            for rect in symbol_rects(placement):
+                if any(_rects_overlap(rect, existing) for existing in regions):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Box {placement.box_id} symbol regions overlap on page "
+                        f"{placement.page}.",
+                    )
+            regions.extend(symbol_rects(placement))
+
+        marked_pdf = await mark_pdf(pdf, placements)
         content = marked_pdf.tobytes(garbage=3, deflate=True)
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to process PDF.",
         ) from error
+    finally:
+        pdf.close()
 
     return Response(content=content, media_type="application/pdf")

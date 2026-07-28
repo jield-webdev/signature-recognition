@@ -1,8 +1,9 @@
-import cv2
 import numpy as np
-from cv2.typing import MatLike
 
 from layout.constants import MARKER_SIZE
+from limits import MAX_RECTIFIED_BOX_PIXELS
+from opencv_config import cv2
+from cv2.typing import MatLike
 
 # Resolution of the rectified crop: 4 px per print point (a 250 pt wide box
 # comes out 1000 px wide).
@@ -33,8 +34,9 @@ def _plane_corners(box_w: float, box_h: float, marker_px: float) -> np.ndarray:
 
 
 def _project(homography: np.ndarray, points: np.ndarray) -> np.ndarray:
-    homogeneous = np.hstack([points, np.ones((len(points), 1))]) @ homography.T
-    return homogeneous[:, :2] / homogeneous[:, 2:3]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        homogeneous = np.hstack([points, np.ones((len(points), 1))]) @ homography.T
+        return homogeneous[:, :2] / homogeneous[:, 2:3]
 
 
 def _estimate_box_size(
@@ -57,6 +59,14 @@ def _estimate_box_size(
     (numeric Jacobian; the problem is only 16x10). Returns ``None`` when the
     markers aren't in the expected diagonal arrangement.
     """
+    if (
+        top_left_corners.shape != (4, 2)
+        or bottom_right_corners.shape != (4, 2)
+        or not np.isfinite(top_left_corners).all()
+        or not np.isfinite(bottom_right_corners).all()
+    ):
+        return None
+
     image_corners = np.vstack([top_left_corners, bottom_right_corners]).astype(
         np.float64
     )
@@ -66,9 +76,14 @@ def _estimate_box_size(
     plane_from_image = cv2.getPerspectiveTransform(
         top_left_corners.astype(np.float32), _marker_destination(0, 0, marker_px)
     )
-    projected = cv2.perspectiveTransform(
-        bottom_right_corners.astype(np.float32).reshape(-1, 1, 2), plane_from_image
-    ).reshape(4, 2)
+    try:
+        projected = cv2.perspectiveTransform(
+            bottom_right_corners.astype(np.float32).reshape(-1, 1, 2), plane_from_image
+        ).reshape(4, 2)
+    except cv2.error:
+        return None
+    if not np.isfinite(projected).all():
+        return None
     box_w, box_h = projected[2]  # the BR marker's BR corner = the box's BR corner
     if box_w <= marker_px or box_h <= marker_px:
         return None
@@ -77,6 +92,8 @@ def _estimate_box_size(
         _plane_corners(box_w, box_h, marker_px), image_corners
     )
     if homography is None:
+        return None
+    if not np.isfinite(homography).all():
         return None
     theta = np.concatenate([homography.flatten()[:8], [box_w, box_h]])
 
@@ -87,6 +104,8 @@ def _estimate_box_size(
 
     damping = LM_INITIAL_DAMPING
     residuals = residual(theta)
+    if not np.isfinite(residuals).all():
+        return None
     cost = residuals @ residuals
     for _ in range(LM_MAX_ITERATIONS):
         jacobian = np.empty((16, 10))
@@ -94,6 +113,9 @@ def _estimate_box_size(
             delta = np.zeros(10)
             delta[j] = 1e-6 * max(1, abs(theta[j]))
             jacobian[:, j] = (residual(theta + delta) - residuals) / delta[j]
+
+        if not np.isfinite(jacobian).all():
+            return None
 
         normal = jacobian.T @ jacobian
         improved = False
@@ -107,7 +129,13 @@ def _estimate_box_size(
                 damping *= 10
                 continue
             candidate = theta + step
+            if not np.isfinite(candidate).all():
+                damping *= 10
+                continue
             candidate_residuals = residual(candidate)
+            if not np.isfinite(candidate_residuals).all():
+                damping *= 10
+                continue
             candidate_cost = candidate_residuals @ candidate_residuals
             if candidate_cost < cost:
                 theta, residuals, cost = candidate, candidate_residuals, candidate_cost
@@ -119,7 +147,11 @@ def _estimate_box_size(
             break
 
     box_w, box_h = theta[8], theta[9]
-    if box_w <= marker_px or box_h <= marker_px:
+    if (
+        not np.isfinite((box_w, box_h)).all()
+        or box_w <= marker_px
+        or box_h <= marker_px
+    ):
         return None
     return float(box_w), float(box_h)
 
@@ -139,14 +171,30 @@ def rectify_box(
     """
     marker_px = MARKER_SIZE * PX_PER_PT
 
+    if (
+        top_left_corners.shape != (4, 2)
+        or bottom_right_corners.shape != (4, 2)
+        or not np.isfinite(top_left_corners).all()
+        or not np.isfinite(bottom_right_corners).all()
+    ):
+        return None
+
     box_size = _estimate_box_size(top_left_corners, bottom_right_corners, marker_px)
     if box_size is None:
         return None
     box_w, box_h = box_size
+    pixels = box_w * box_h
+    if not np.isfinite(pixels) or pixels > MAX_RECTIFIED_BOX_PIXELS:
+        return None
 
     src = np.vstack([top_left_corners, bottom_right_corners]).astype(np.float32)
     dst = _plane_corners(box_w, box_h, marker_px).astype(np.float32)
     homography, _ = cv2.findHomography(src, dst)
-    return cv2.warpPerspective(
-        image, homography, (round(box_w), round(box_h)), borderValue=255
-    )
+    if homography is None or not np.isfinite(homography).all():
+        return None
+    try:
+        return cv2.warpPerspective(
+            image, homography, (round(box_w), round(box_h)), borderValue=255
+        )
+    except cv2.error:
+        return None

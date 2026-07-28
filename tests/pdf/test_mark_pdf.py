@@ -1,6 +1,7 @@
 import cv2
 import fitz
 import numpy as np
+import pytest
 import zxingcpp
 
 from aruco.dictionary import ARUCO_DICT
@@ -99,3 +100,32 @@ async def test_slots_advance_per_box_and_restart_per_page(pdf_bytes):
 
     _, second_page_ids, _ = detector.detectMarkers(_rasterize(doc[1]))
     assert sorted(second_page_ids.flatten().tolist()) == [0, 1]
+
+
+@pytest.mark.parametrize("rotation", [90, 180, 270])
+async def test_stamps_rotated_page_at_display_coordinates(rotation):
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.set_rotation(rotation)
+    placement = BoxPlacement(
+        box_id=123,
+        page=0,
+        x=50,
+        y=50,
+        width=250,
+        height=80,
+    )
+
+    await mark_pdf(doc, [placement])
+    image = _rasterize(page)
+    detector = cv2.aruco.ArucoDetector(ARUCO_DICT, cv2.aruco.DetectorParameters())
+    corners, ids, _ = detector.detectMarkers(image)
+
+    assert ids is not None
+    marker_index = ids.flatten().tolist().index(0)
+    marker = corners[marker_index].reshape(4, 2)
+    assert abs(marker[:, 0].min() - placement.x * 6) <= 8
+    assert abs(marker[:, 1].min() - placement.y * 6) <= 8
+
+    result = zxingcpp.read_barcode(image, formats=zxingcpp.BarcodeFormat.DataMatrix)
+    assert result is not None and result.text == "123"

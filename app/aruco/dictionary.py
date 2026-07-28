@@ -1,4 +1,4 @@
-import cv2
+from opencv_config import cv2
 
 # Marker ids only distinguish box slots on a page (identity travels in the
 # DataMatrix), so the smallest predefined dictionary gives the best detection

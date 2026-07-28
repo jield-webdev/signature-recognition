@@ -10,5 +10,5 @@ images_samples/
 demo/
 .env
 Dockerfile
-compose.yaml
+compose.*.yaml
 README.md

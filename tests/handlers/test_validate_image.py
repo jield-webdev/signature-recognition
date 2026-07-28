@@ -4,6 +4,7 @@ import cv2
 import fitz
 import numpy as np
 
+import file.read_image as read_image
 from boxes.placement import BoxPlacement
 from pdf.mark_pdf import mark_pdf
 
@@ -117,4 +118,16 @@ def test_rejects_malformed_image(client):
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Invalid image file."
+    assert response.json()["detail"] == "File content does not match declared content type."
+
+
+def test_rejects_image_larger_than_upload_limit(client, monkeypatch):
+    monkeypatch.setattr(read_image, "MAX_UPLOAD_BYTES", 4, raising=False)
+
+    response = client.post(
+        "/validate-image",
+        files={"file": ("signature.png", b"12345", "image/png")},
+    )
+
+    assert response.status_code == 413
+    assert "exceeds" in response.json()["detail"]

@@ -3,10 +3,14 @@ import os
 from fastapi import FastAPI, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+import opencv_config
 from handlers.validate_image import validate_image_handler
 from handlers.mark_pdf import mark_pdf_handler
+from limits import MAX_REQUEST_BYTES
+from request_size_limit import RequestSizeLimitMiddleware
 
 app = FastAPI()
+app.add_middleware(RequestSizeLimitMiddleware, max_bytes=MAX_REQUEST_BYTES)
 
 allow_origins = [
     origin.strip()
@@ -20,6 +24,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    return {"status": "ok"}
 
 
 @app.post("/validate-image")

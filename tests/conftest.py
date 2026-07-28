@@ -65,8 +65,8 @@ def upload_file_factory():
             self.content_type = content_type
             self.size = size
 
-        async def read(self) -> bytes:
-            return self._content
+        async def read(self, size: int = -1) -> bytes:
+            return self._content if size < 0 else self._content[:size]
 
     unset = object()
 

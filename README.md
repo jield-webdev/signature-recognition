@@ -135,14 +135,35 @@ http://localhost:8000/docs
 
 ## Docker
 
-The repository ships a production image (no reload, no source mounts) and a Compose file.
+The repository ships a production image (no reload, no source mounts) and two Compose files: `compose.prod.yaml` and `compose.dev.yaml`.
+
+### Production
 
 ```bash
 cp .env.example .env
-docker compose up --build
+docker compose -f compose.prod.yaml up --build
 ```
 
 The API is then available at `http://localhost:8000` (or whichever `HOST_PORT` you set).
+
+### Development
+
+`compose.dev.yaml` mounts `app/` into the container, runs `fastapi dev` for live reload, and joins the external `signature-recognition` network so the [development load balancer](../development-loadbalancer) can route to it. No host port is published — the service is reached through Traefik only.
+
+Create the network once (it is shared with the load balancer, so it must exist before either side starts):
+
+```bash
+docker network create signature-recognition
+```
+
+Then:
+
+```bash
+cp .env.example .env
+docker compose -f compose.dev.yaml up --build
+```
+
+The API is then available at `https://signature-recognition.docker.localhost`.
 
 Configuration lives in `.env`:
 

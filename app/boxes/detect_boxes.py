@@ -1,15 +1,17 @@
-import cv2
 import numpy as np
-from cv2.typing import MatLike
 
 from aruco.detect_markers import detect_markers
-from boxes.box_id import is_valid_box_id
+from boxes.box_id import MAX_BOX_ID, is_valid_box_id
 from datamatrix.decode_datamatrix import decode_datamatrix
+from file.errors import InputTooLargeError
 from image.is_signed import is_signed
 from image.rectify_box import rectify_box
 from image.remove_shadows import remove_shadows
 from image.to_grayscale import to_grayscale
 from layout.constants import DATAMATRIX_SIZE, GAP, MARKER_SIZE
+from limits import MAX_TOTAL_RECTIFIED_PIXELS
+from opencv_config import cv2
+from cv2.typing import MatLike
 
 # Side of the canonical (rectified) marker square, in pixels. 
 CANONICAL_MARKER_PX = 120
@@ -52,7 +54,12 @@ def _decode_box_id(image: MatLike, marker_corners: np.ndarray) -> int | None:
     )
 
     text = decode_datamatrix(crop)
-    if text is None or not text.isdigit():
+    if (
+        text is None
+        or not text.isascii()
+        or not text.isdecimal()
+        or len(text) > len(str(MAX_BOX_ID))
+    ):
         return None
     box_id = int(text)
     return box_id if is_valid_box_id(box_id) else None
@@ -67,9 +74,19 @@ async def detect_boxes(image: MatLike) -> list[dict]:
     A box whose DataMatrix cannot be decoded is reported with ``box_id: None``
     so the caller can request a retake instead of silently dropping it.
     """
-    corners_by_id = dict(await detect_markers(image))
+    corners_by_id = {}
+    ambiguous_ids = set()
+    for marker_id, corners in await detect_markers(image):
+        if marker_id in corners_by_id:
+            ambiguous_ids.add(marker_id)
+        else:
+            corners_by_id[marker_id] = corners
+    for marker_id in ambiguous_ids:
+        del corners_by_id[marker_id]
 
     boxes = []
+    total_rectified_pixels = 0
+    grayscale = to_grayscale(image)
     for top_left_id in sorted(marker_id for marker_id in corners_by_id if marker_id % 2 == 0):
         top_left = corners_by_id[top_left_id]
         bottom_right = corners_by_id.get(top_left_id + 1)
@@ -80,9 +97,15 @@ async def detect_boxes(image: MatLike) -> list[dict]:
         if crop is None:
             continue  # both markers found but not in a valid diagonal arrangement
 
+        total_rectified_pixels += crop.shape[0] * crop.shape[1]
+        if total_rectified_pixels > MAX_TOTAL_RECTIFIED_PIXELS:
+            raise InputTooLargeError(
+                f"Rectified boxes exceed {MAX_TOTAL_RECTIFIED_PIXELS} pixel limit."
+            )
+
         boxes.append(
             {
-                "box_id": _decode_box_id(to_grayscale(image), top_left),
+                "box_id": _decode_box_id(grayscale, top_left),
                 "image": crop,
                 "is_signed": is_signed(remove_shadows(crop)),
             }

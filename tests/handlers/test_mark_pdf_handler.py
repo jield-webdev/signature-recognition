@@ -6,6 +6,7 @@ import numpy as np
 
 from aruco.slots import MAX_SLOTS_PER_PAGE
 from boxes.box_id import MAX_BOX_ID
+import file.read_pdf as read_pdf_module
 
 
 def _boxes(box_id: int = 1, page: int = 0, x: float = 50, y: float = 400,
@@ -224,7 +225,7 @@ def test_rejects_malformed_pdf(client):
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Invalid Pdf Error"
+    assert response.json()["detail"] == "Invalid PDF file."
 
 
 def test_rejects_zero_page_pdf(client, zero_page_pdf_bytes):
@@ -263,3 +264,71 @@ def test_returns_500_when_marking_fails_unexpectedly(client, pdf_bytes, monkeypa
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Failed to process PDF."
+
+
+def test_rejects_box_without_room_for_quiet_zone(client, pdf_bytes):
+    response = client.post(
+        "/mark-pdf",
+        files={"file": ("contract.pdf", pdf_bytes(pages=1), "application/pdf")},
+        data={"boxes": _boxes(x=0)},
+    )
+
+    assert response.status_code == 400
+    assert "quiet zone" in response.json()["detail"]
+
+
+def test_rejects_overlapping_symbol_regions(client, pdf_bytes):
+    boxes = json.dumps(
+        [
+            {"box_id": 1, "page": 0, "x": 50, "y": 400, "width": 250, "height": 80},
+            {"box_id": 2, "page": 0, "x": 50, "y": 400, "width": 250, "height": 80},
+        ]
+    )
+    response = client.post(
+        "/mark-pdf",
+        files={"file": ("contract.pdf", pdf_bytes(pages=1), "application/pdf")},
+        data={"boxes": boxes},
+    )
+
+    assert response.status_code == 400
+    assert "overlap" in response.json()["detail"]
+
+
+def test_rejects_nonfinite_placement_coordinate(client, pdf_bytes):
+    boxes = (
+        '[{"box_id":1,"page":0,"x":NaN,"y":400,"width":250,"height":80}]'
+    )
+    response = client.post(
+        "/mark-pdf",
+        files={"file": ("contract.pdf", pdf_bytes(pages=1), "application/pdf")},
+        data={"boxes": boxes},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith("Invalid boxes:")
+
+
+def test_rejects_boolean_box_id(client, pdf_bytes):
+    boxes = (
+        '[{"box_id":true,"page":0,"x":50,"y":400,"width":250,"height":80}]'
+    )
+    response = client.post(
+        "/mark-pdf",
+        files={"file": ("contract.pdf", pdf_bytes(pages=1), "application/pdf")},
+        data={"boxes": boxes},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith("Invalid boxes:")
+
+
+def test_rejects_pdf_with_too_many_pages(client, pdf_bytes, monkeypatch):
+    monkeypatch.setattr(read_pdf_module, "MAX_PDF_PAGES", 1, raising=False)
+    response = client.post(
+        "/mark-pdf",
+        files={"file": ("contract.pdf", pdf_bytes(pages=2), "application/pdf")},
+        data={"boxes": _boxes()},
+    )
+
+    assert response.status_code == 413
+    assert "more than 1 page" in response.json()["detail"]

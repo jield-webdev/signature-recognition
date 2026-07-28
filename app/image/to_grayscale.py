@@ -1,4 +1,4 @@
-import cv2
+from opencv_config import cv2
 from cv2.typing import MatLike
 
 

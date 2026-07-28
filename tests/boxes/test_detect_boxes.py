@@ -1,11 +1,12 @@
 import cv2
 import fitz
+import importlib
 import numpy as np
 import zxingcpp
 
 from aruco.dictionary import ARUCO_DICT
 from aruco.slots import markers_for_slot
-from boxes.detect_boxes import detect_boxes
+from boxes.detect_boxes import _decode_box_id, detect_boxes
 from boxes.placement import BoxPlacement
 from image.rectify_box import PX_PER_PT
 from layout.constants import DATAMATRIX_SIZE, GAP, MARGIN, MARKER_SIZE
@@ -199,3 +200,30 @@ async def test_returns_empty_list_for_blank_image():
     canvas = np.full((800, 800), 255, dtype=np.uint8)
 
     assert await detect_boxes(canvas) == []
+
+
+def test_rejects_non_ascii_digit_datamatrix(monkeypatch):
+    corners = np.float32([[100, 100], [244, 100], [244, 244], [100, 244]])
+    image = np.full((400, 400), 255, dtype=np.uint8)
+    module = importlib.import_module("boxes.detect_boxes")
+    monkeypatch.setattr(module, "decode_datamatrix", lambda _: "²")
+
+    assert _decode_box_id(image, corners) is None
+
+
+async def test_ignores_ambiguous_duplicate_marker_ids(monkeypatch):
+    module = importlib.import_module("boxes.detect_boxes")
+    top_left = np.float32([[100, 100], [244, 100], [244, 244], [100, 244]])
+    duplicate_top_left = top_left + np.float32([400, 0])
+    bottom_right = np.float32([[1000, 500], [1144, 500], [1144, 644], [1000, 644]])
+
+    async def fake_detect_markers(_):
+        return [(0, top_left), (0, duplicate_top_left), (1, bottom_right)]
+
+    def should_not_rectify(*_):
+        raise AssertionError("ambiguous marker pair was rectified")
+
+    monkeypatch.setattr(module, "detect_markers", fake_detect_markers)
+    monkeypatch.setattr(module, "rectify_box", should_not_rectify)
+
+    assert await module.detect_boxes(np.full((800, 1600), 255, dtype=np.uint8)) == []

@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 
+import image.rectify_box as rectify_box_module
 from aruco.dictionary import ARUCO_DICT
 from aruco.slots import markers_for_slot
 from image.rectify_box import PX_PER_PT, rectify_box
@@ -142,3 +143,19 @@ def test_rejects_markers_not_on_a_diagonal():
     to_the_left = _square(0, 100, MARKER_SIZE * PPP)
 
     assert rectify_box(canvas, tl, to_the_left) is None
+
+
+def test_rejects_nonfinite_marker_corners():
+    canvas, tl, br = _canvas_with_pair(100, 100, 250 * PPP, 120 * PPP)
+    tl[0, 0] = np.nan
+
+    assert rectify_box(canvas, tl, br) is None
+
+
+def test_rejects_crop_larger_than_pixel_limit(monkeypatch):
+    canvas, tl, br = _canvas_with_pair(100, 100, 250 * PPP, 120 * PPP)
+    monkeypatch.setattr(
+        rectify_box_module, "MAX_RECTIFIED_BOX_PIXELS", 100, raising=False
+    )
+
+    assert rectify_box(canvas, tl, br) is None

@@ -99,3 +99,9 @@ def test_fully_masked_tiny_crop_is_not_signed():
     crop = np.zeros((80, 80), dtype=np.uint8)
 
     assert is_signed(crop) is False
+
+
+def test_blank_colored_paper_is_not_signed():
+    crop = np.full((120 * PX_PER_PT, 250 * PX_PER_PT, 3), (0, 255, 255), dtype=np.uint8)
+
+    assert is_signed(crop) is False
