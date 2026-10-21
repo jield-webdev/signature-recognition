@@ -1,0 +1,63 @@
+name: Deploy to Azure App Service
+
+# Azure prerequisites (publish profiles cannot configure the runtime/startup command):
+# - Linux App Service with the Python 3.14 runtime.
+# - Startup Command: bash startup.txt
+# - App setting: SCM_DO_BUILD_DURING_DEPLOYMENT=true; leave WEBSITE_RUN_FROM_PACKAGE unset.
+# - GitHub variable AZURE_WEBAPP_NAME and secret AZURE_WEBAPP_PUBLISH_PROFILE.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: azure-webapp-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10
+
+      - name: Package application
+        shell: bash
+        run: |
+          package_dir="$(mktemp -d "${RUNNER_TEMP}/azure-package.XXXXXX")"
+          cp -R app "${package_dir}/app"
+
+          # Oryx installs the locked production dependencies on Azure's Linux runtime.
+          uv export --locked --no-dev --no-emit-project --format requirements.txt \
+            --output-file "${package_dir}/requirements.txt" --quiet
+
+          cat > "${package_dir}/startup.txt" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec python -m uvicorn main:app --app-dir app --host 0.0.0.0 --port "${PORT:-8000}"
+          EOF
+
+          cat > "${package_dir}/.deployment" <<'EOF'
+          [config]
+          SCM_DO_BUILD_DURING_DEPLOYMENT=true
+          EOF
+
+          cd "${package_dir}"
+          zip -r "${RUNNER_TEMP}/app-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.zip" \
+            app requirements.txt startup.txt .deployment \
+            -x '*/__pycache__/*' '*.pyc'
+
+      - name: Deploy to Azure
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: ${{ runner.temp }}/app-${{ github.run_id }}-${{ github.run_attempt }}.zip

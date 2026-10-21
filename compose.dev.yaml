@@ -2,18 +2,18 @@ services:
   api:
     build: .
     command:
-      ["fastapi", "dev", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
+      [ "fastapi", "dev", "app/main.py", "--host", "0.0.0.0", "--port", "8000" ]
     volumes:
       - ./app:/app/app
     env_file: .env
     restart: unless-stopped
     labels:
       - traefik.enable=true
-      - traefik.http.services.signature-recognition.loadbalancer.server.port=8000
-      - traefik.http.routers.signature-recognition-http.service=signature-recognition
-      - traefik.http.routers.signature-recognition-http.rule=Host(`signature-recognition.docker.localhost`)
-      - traefik.http.routers.signature-recognition-http.entrypoints=https
-      - traefik.http.routers.signature-recognition-http.tls=true
+      - traefik.http.services.permit-manager-signature-recognition.loadbalancer.server.port=8000
+      - traefik.http.routers.permit-manager-signature-recognition-http.service=permit-manager-signature-recognition
+      - traefik.http.routers.permit-manager-signature-recognition-http.rule=Host(`permit-manager-signature-recognition.docker.localhost`)
+      - traefik.http.routers.permit-manager-signature-recognition-http.entrypoints=https
+      - traefik.http.routers.permit-manager-signature-recognition-http.tls=true
     healthcheck:
       test:
         [
@@ -27,8 +27,8 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - signature-recognition
+      - permit-manager
 
 networks:
-  signature-recognition:
+  permit-manager:
     external: true
